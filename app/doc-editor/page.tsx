@@ -1,11 +1,14 @@
+import { Suspense } from "react";
 import { DocEditor } from "./doc-editor";
+import { NavBar } from "@/components/nav-bar";
 
 export default function DocEditorPage() {
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-4xl">
+    <main className="min-h-screen flex flex-col">
+      <NavBar />
+      <Suspense fallback={<div className="flex-1 flex items-center justify-center">Loading...</div>}>
         <DocEditor />
-      </div>
-    </div>
+      </Suspense>
+    </main>
   );
 }
