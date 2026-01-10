@@ -1,4 +1,5 @@
 import { Footer } from "@/components/footer";
+import Link from "next/link";
 
 // Fake course data for preview/testing
 const courseData = [
@@ -62,11 +63,11 @@ export function ClassDocs() {
               </h2>
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
                 {topic.documents.map((doc) => (
-                  <div
+                  <Link
                     key={doc.name}
+                    href={`/doc-editor?doc=${encodeURIComponent(doc.name)}`}
                     className="bg-card rounded-lg border border-border shadow-sm transition-transform flex items-center gap-4
                                p-4 cursor-pointer hover:-translate-y-1 hover:shadow-md"
-                    tabIndex={0}
                   >
                     <div className="p-2 bg-muted rounded-lg flex items-center justify-center">
                       <span
@@ -80,7 +81,7 @@ export function ClassDocs() {
                     <span className="font-medium text-sm text-foreground">
                       {doc.name}
                     </span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>
