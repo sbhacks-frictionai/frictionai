@@ -11,9 +11,11 @@ export async function AuthButton() {
 
   const user = data?.claims;
 
+  const displayName = user?.email ? user.email.split("@")[0] : "";
+
   return user ? (
     <div className="flex items-center gap-4">
-      Hey, {user.email}!
+      {displayName}
       <LogoutButton />
     </div>
   ) : (
