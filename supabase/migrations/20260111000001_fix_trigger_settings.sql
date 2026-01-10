@@ -1,6 +1,5 @@
--- Enable pg_net extension for making HTTP requests
--- Note: This must be created AFTER any migrations that drop it
-CREATE EXTENSION IF NOT EXISTS pg_net;
+-- Fix trigger to use settings table instead of custom config parameters
+-- This migration updates the trigger function to read from a table instead of non-existent config params
 
 -- Create a settings table to store configuration (more reliable than custom config params)
 CREATE TABLE IF NOT EXISTS public.edge_function_settings (
@@ -19,7 +18,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Function to trigger the process-pdf edge function when a file is uploaded
+-- Update the trigger function to use the settings table
 CREATE OR REPLACE FUNCTION public.trigger_process_pdf()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -78,7 +77,6 @@ BEGIN
 
   -- Make async HTTP request to the edge function
   -- Using pg_net for async HTTP requests (non-blocking)
-  -- Correct function signature: net.http_post(url, body, params, headers, timeout_milliseconds)
   PERFORM net.http_post(
     url := function_url,
     body := payload,
@@ -90,34 +88,5 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create trigger on storage.objects table
--- This will fire when a new file is uploaded to the "documents" bucket
-CREATE TRIGGER on_storage_object_upload
-  AFTER INSERT ON storage.objects
-  FOR EACH ROW
-  WHEN (NEW.bucket_id = 'documents')
-  EXECUTE FUNCTION public.trigger_process_pdf();
-
 -- Grant necessary permissions
-GRANT USAGE ON SCHEMA net TO postgres, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.trigger_process_pdf() TO postgres, service_role;
 GRANT SELECT ON TABLE public.edge_function_settings TO postgres, service_role;
-
--- ============================================================================
--- PRODUCTION SETUP INSTRUCTIONS:
--- ============================================================================
--- To configure this for production, run these SQL commands in your Supabase SQL editor:
---
--- 1. Update the settings table with your production URL and service role key:
---
---    UPDATE public.edge_function_settings
---    SET 
---      supabase_url = 'https://dtdehfdqpfjyeglvsjhk.supabase.co',
---      service_role_key = 'YOUR_SERVICE_ROLE_KEY_HERE',
---      updated_at = now()
---    WHERE id = 'default';
---
--- 2. Get your service role key from: Project Settings > API > service_role key
---
--- Note: The service role key bypasses Row Level Security (RLS), so keep it secure.
--- ============================================================================
