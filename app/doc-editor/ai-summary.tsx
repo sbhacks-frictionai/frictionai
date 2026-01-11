@@ -28,6 +28,7 @@ export function AiSummary() {
 	const [studyGuide, setStudyGuide] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
 
 	const handleGenerate = async () => {
 		if (!documentId) {
@@ -130,6 +131,33 @@ export function AiSummary() {
 		return formatted;
 	};
 
+	const handleCopy = async () => {
+		if (!studyGuide) return;
+
+		try {
+			await navigator.clipboard.writeText(studyGuide);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+		} catch (err) {
+			console.error("Failed to copy:", err);
+			// Fallback for older browsers
+			const textArea = document.createElement("textarea");
+			textArea.value = studyGuide;
+			textArea.style.position = "fixed";
+			textArea.style.opacity = "0";
+			document.body.appendChild(textArea);
+			textArea.select();
+			try {
+				document.execCommand("copy");
+				setCopied(true);
+				setTimeout(() => setCopied(false), 2000);
+			} catch (fallbackErr) {
+				console.error("Fallback copy failed:", fallbackErr);
+			}
+			document.body.removeChild(textArea);
+		}
+	};
+
 	return (
 		<Card className="w-full">
 			<CardHeader>
@@ -155,10 +183,64 @@ export function AiSummary() {
 					)}
 
 					{studyGuide && (
-						<div className="mt-4 p-4 rounded-md bg-muted/50 border">
-							<div className="prose prose-sm max-w-none">
-								<div className="text-sm text-foreground whitespace-pre-wrap">
-									{formatStudyGuide(studyGuide)}
+						<div className="mt-4 space-y-2">
+							<div className="flex justify-end">
+								<Button
+									onClick={handleCopy}
+									variant="outline"
+									size="sm"
+									className="gap-2"
+								>
+									{copied ? (
+										<>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												width="16"
+												height="16"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+											>
+												<path d="M20 6L9 17l-5-5" />
+											</svg>
+											Copied!
+										</>
+									) : (
+										<>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												width="16"
+												height="16"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+											>
+												<rect
+													width="14"
+													height="14"
+													x="8"
+													y="8"
+													rx="2"
+													ry="2"
+												/>
+												<path d="M4 16c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2" />
+											</svg>
+											Copy
+										</>
+									)}
+								</Button>
+							</div>
+							<div className="p-4 rounded-md bg-muted/50 border">
+								<div className="prose prose-sm max-w-none">
+									<div className="text-sm text-foreground whitespace-pre-wrap">
+										{formatStudyGuide(studyGuide)}
+									</div>
 								</div>
 							</div>
 						</div>
