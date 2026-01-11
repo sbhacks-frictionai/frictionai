@@ -15,6 +15,12 @@ export const getDocumentService = () => {
       return data;
   };
 
+  const getFilePathById= async (documentId) => {
+    const { data, error } = await supabase.from("documents").select("bucket_path").eq("id", documentId);
+    if (error) throw error;
+    return data[0].bucket_path;
+  }
+
   return {
     getAllDocumentByCourseId: async (courseId) => {
       const { data, error } = await supabase.from("documents").select("*").eq("course_id", courseId);
@@ -43,6 +49,14 @@ export const getDocumentService = () => {
       if (error) throw error;
       return docData;
     },
+    getFilePathById,
+    getFileBlob: async (documentId) => {
+      const filePath = await getFilePathById(documentId);
+      const { data, error } = await supabase.storage.from('documents').download(filePath);
+      if (error) throw error;
+      return data; // Return just the blob without triggering download
+    },
+    
 
 
   };
