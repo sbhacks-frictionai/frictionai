@@ -21,9 +21,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
   const [currentHighlight, setCurrentHighlight] = useState(null);
   const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
   const containerRef = useRef(null);
-  const pageViewStartTime = useRef(null);
-  const pageViewTimes = useRef({}); // Store time spent on each page
-  const [currentPageViewTime, setCurrentPageViewTime] = useState(0); // Time on current page in seconds
 
   const goToPrevPage = useCallback(() => {
     setPageNumber(prev => Math.max(1, prev - 1));
@@ -33,71 +30,10 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
     setPageNumber(prev => Math.min(numPages || 1, prev + 1));
   }, [numPages]);
 
-  // Track time spent on each page and update display
+  // Close dialog bubble when page changes
   useEffect(() => {
-    if (!file || !numPages) return;
-
-    // Record end time for previous page if it exists
-    if (pageViewStartTime.current !== null) {
-      const previousPage = pageNumber;
-      const endTime = Date.now();
-      const duration = endTime - pageViewStartTime.current;
-      
-      // Add to accumulated time for this page
-      if (!pageViewTimes.current[previousPage]) {
-        pageViewTimes.current[previousPage] = 0;
-      }
-      pageViewTimes.current[previousPage] += duration;
-      
-    //   console.log(`Page ${previousPage} view time: ${(duration / 1000).toFixed(2)} seconds`);
-    //   console.log(`Total time on page ${previousPage}: ${(pageViewTimes.current[previousPage] / 1000).toFixed(2)} seconds`);
-    }
-
-    // Start tracking time for current page
-    pageViewStartTime.current = Date.now();
-    setCurrentPageViewTime(0); // Reset display time
-    // Close dialog bubble when page changes
     setSelectedHighlight(null);
-    // console.log(`Started viewing page ${pageNumber}`);
-
-    // Update displayed time every second
-    const interval = setInterval(() => {
-      if (pageViewStartTime.current !== null) {
-        const elapsed = (Date.now() - pageViewStartTime.current) / 1000;
-        setCurrentPageViewTime(elapsed);
-      }
-    }, 100); // Update every 100ms for smoother display
-
-    // Cleanup: record time when component unmounts or file changes
-    return () => {
-      clearInterval(interval);
-      if (pageViewStartTime.current !== null) {
-        const endTime = Date.now();
-        const duration = endTime - pageViewStartTime.current;
-        const currentPage = pageNumber;
-        
-        if (!pageViewTimes.current[currentPage]) {
-          pageViewTimes.current[currentPage] = 0;
-        }
-        pageViewTimes.current[currentPage] += duration;
-        
-        // console.log(`Final time on page ${currentPage}: ${(pageViewTimes.current[currentPage] / 1000).toFixed(2)} seconds`);
-      }
-    };
-  }, [pageNumber, file, numPages]);
-
-  // Log summary when file changes or component unmounts
-//   useEffect(() => {
-//     return () => {
-//       if (Object.keys(pageViewTimes.current).length > 0) {
-//         console.log('=== Page View Time Summary ===');
-//         Object.entries(pageViewTimes.current).forEach(([page, totalTime]) => {
-//           console.log(`Page ${page}: ${(totalTime / 1000).toFixed(2)} seconds`);
-//         });
-//         console.log('==============================');
-//       }
-//     };
-//   }, [file]);
+  }, [pageNumber]);
 
   // Keyboard navigation for page flipping
   useEffect(() => {
@@ -300,7 +236,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
                 onClick={zoomOut}
                 title="Zoom out"
               >
-                −
+                -
               </Button>
               <span className="text-sm font-medium min-w-[50px] text-center">
                 {Math.round(scale * 100)}%
@@ -318,13 +254,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-5 flex justify-center items-start relative bg-white" ref={containerRef}>
-        {file && (
-          <div className="absolute top-5 right-5 bg-black/70 text-white p-2.5 px-4 rounded-lg text-sm font-medium z-[1000] shadow-lg pointer-events-none">
-            Page {pageNumber}: {currentPageViewTime.toFixed(1)}s
-          </div>
-        )}
-        
+      <div className="flex-1 overflow-auto p-5 flex justify-center items-start relative bg-background" ref={containerRef}>
         {!file && (
           <div className="flex justify-center items-center h-full text-lg text-muted-foreground">
             <p>Loading PDF...</p>
@@ -352,6 +282,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
                 onMouseMove={(e) => handleMouseMove(e, pageNumber - 1)}
                 onMouseUp={(e) => handleMouseUp(e, pageNumber - 1)}
               >
+                
                 <Page
                   pageNumber={pageNumber}
                   scale={scale}
@@ -447,7 +378,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
                   {/* Dialog bubble for selected highlight */}
                   {selectedHighlight && selectedHighlight.page === pageNumber && (
                     <div
-                      className="absolute z-[20] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-[200px] max-w-[300px]"
+                      className="absolute z-[20] dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-[200px] max-w-[300px]"
                       style={{
                         left: `${selectedHighlight.x * scale + 10}px`,
                         top: `${selectedHighlight.y * scale}px`,
