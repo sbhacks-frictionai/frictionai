@@ -6,13 +6,30 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const MAX_CONTINUATIONS = 5; // safety guard
+
+// Helper function to format time in seconds to a readable format
+function formatTime(seconds: number): string {
+	if (seconds < 60) {
+		return `${Math.round(seconds)}s`;
+	} else if (seconds < 3600) {
+		const minutes = Math.floor(seconds / 60);
+		const secs = Math.round(seconds % 60);
+		return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+	} else {
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+	}
+}
+
 interface GetAIGuideRequest {
 	document_id: string;
 }
 
 interface GetAIGuideResponse {
 	success: boolean;
-	prompt?: string;
+	study_guide?: string;
 	course_code?: string;
 	course_name?: string;
 	document_name?: string;
@@ -118,6 +135,27 @@ Deno.serve(async (req) => {
 			);
 		}
 
+		// Fetch page times for this document
+		const { data: pageTimes, error: pageTimesError } = await supabase
+			.from("page_times")
+			.select("page, time_spent")
+			.eq("document_id", document_id);
+
+		if (pageTimesError) {
+			console.warn("Error fetching page times:", pageTimesError);
+			// Continue without page times - not critical
+		}
+
+		// Organize page times by page number
+		const timeByPage: Record<number, number> = {};
+		if (pageTimes) {
+			for (const pt of pageTimes) {
+				if (pt.page_number !== null && pt.total_time !== null) {
+					timeByPage[pt.page_number] = pt.total_time;
+				}
+			}
+		}
+
 		// Organize chunks by page
 		const chunksByPage: Record<number, typeof chunks> = {};
 		for (const chunk of chunks) {
@@ -136,11 +174,24 @@ Deno.serve(async (req) => {
 			const pageChunks = chunksByPage[pageNum];
 			const pageContent = pageChunks
 				.filter((chunk) => !chunk.is_image && chunk.content)
-				.map((chunk) => chunk.content)
+				.map((chunk) => {
+					const clicks = chunk.interactions || 0;
+					const clickInfo =
+						clicks > 0
+							? ` [${clicks} click${clicks !== 1 ? "s" : ""}]`
+							: "";
+					return `${chunk.content}${clickInfo}`;
+				})
 				.join("\n\n");
 
 			if (pageContent.trim()) {
-				contentSections.push(`--- Page ${pageNum} ---\n${pageContent}`);
+				const timeSpent = timeByPage[pageNum];
+				const timeInfo = timeSpent
+					? ` (${formatTime(timeSpent)} spent)`
+					: "";
+				contentSections.push(
+					`--- Page ${pageNum}${timeInfo} ---\n${pageContent}`
+				);
 			}
 		}
 
@@ -161,19 +212,23 @@ COURSE INFORMATION:
 - Total Content Chunks: ${chunks.length}
 
 DOCUMENT CONTENT:
-The following is the complete text content extracted from the course document, organized by page:
+The following is the complete text content extracted from the course document, organized by page. Each chunk is followed by [X clicks] indicating how many times students clicked on that content (higher click counts suggest areas of confusion or importance that students found challenging). Each page header shows the total time students spent on that page (higher time indicates more engagement or difficulty):
 
 ${fullContent}
 
 TASK:
-Create a comprehensive study guide for this ${courseCode} course material. The study guide should:
+Create a comprehensive study guide for this ${courseCode} course material. Pay special attention to content with high click counts, as these indicate areas where students struggled or found particularly important. The study guide should:
 
-1. **Key Concepts & Topics**: Identify and list the main topics and concepts covered in the material
-2. **Important Definitions**: Extract and define key terms, formulas, theorems, or concepts
-3. **Main Points Summary**: Provide a structured summary of the most important points from each major section
-4. **Study Questions**: Generate thoughtful study questions that test understanding of the material
-5. **Connections**: Highlight how different concepts relate to each other
-6. **Practice Recommendations**: Suggest what students should focus on for effective studying
+1. Identify and list the main topics and concepts covered in the material, prioritizing those with higher click counts
+2. Extract and define key terms, formulas, theorems, or concepts, with extra emphasis on frequently clicked content
+3. Provide a structured summary of the most important points from each major section, highlighting areas that received the most student attention
+4. Generate thoughtful study questions that test understanding of the material, especially focusing on concepts that students clicked on most
+5. Highlight how different concepts relate to each other, particularly for high-engagement areas
+
+IMPORTANT GUIDELINES:
+- Allocate more explanation to areas with high click counts
+- Allocate less explanation to areas with low click counts
+- Allocate more explanation to pages with higher time spent
 
 FORMATTING GUIDELINES:
 - Use clear headings and subheadings
@@ -182,19 +237,49 @@ FORMATTING GUIDELINES:
 - Include examples when relevant
 - Make it easy to scan and review
 - Focus on what's most important for understanding and retention
+- Do not introduce the study guide's purpose or the fact that it was generated by an AI.
+- Only include information as specified in the task.
 
 STYLE:
 - Write in a clear, educational tone appropriate for ${courseCode}
 - Use terminology consistent with the course material
-- Be concise but comprehensive
+- Be comprehensive
 - Prioritize clarity and usefulness for students studying this material
 
+OUTPUT CONSTRAINTS:
+- Use plain text only. No markdown, no html, no code, no code blocks, no code snippets, no code examples.
+- Limit the study guide to at most 8 major sections.
+- Each section should be concise and focused.
+- Do not use *, -, #, or bullet formatting.
+- Use numbered sections and indented paragraphs instead.
+- The entire response must fit within a single output.
+- If the content cannot fit within the output limit, stop at a clean section boundary and write "CONTINUE" on the final line.
+
 Generate the study guide now:`;
+
+		// Generate study guide using Gemini
+		const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+
+		if (!geminiApiKey) {
+			return new Response(
+				JSON.stringify({
+					success: false,
+					error: "GEMINI_API_KEY not configured",
+				} as GetAIGuideResponse),
+				{ headers: { "Content-Type": "application/json" }, status: 500 }
+			);
+		}
+
+		// Call Gemini API to generate the study guide
+		const studyGuide = await generateStudyGuideWithContinuation(
+			prompt,
+			geminiApiKey
+		);
 
 		return new Response(
 			JSON.stringify({
 				success: true,
-				prompt,
+				study_guide: studyGuide,
 				course_code: courseCode,
 				course_name: courseName,
 				document_name: documentName,
@@ -216,6 +301,122 @@ Generate the study guide now:`;
 		);
 	}
 });
+
+// ============= GEMINI API CALL =============
+
+async function generateStudyGuideWithGemini(
+	prompt: string,
+	apiKey: string
+): Promise<string> {
+	const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+	console.log("Calling Gemini API to generate study guide...");
+
+	try {
+		const response = await fetch(geminiUrl, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				contents: [
+					{
+						parts: [{ text: prompt }],
+					},
+				],
+				generationConfig: {
+					temperature: 0.7,
+					topK: 40,
+					topP: 0.95,
+					maxOutputTokens: 4096, // Longer output for comprehensive study guides
+				},
+				safetySettings: [
+					{
+						category: "HARM_CATEGORY_HARASSMENT",
+						threshold: "BLOCK_MEDIUM_AND_ABOVE",
+					},
+					{
+						category: "HARM_CATEGORY_HATE_SPEECH",
+						threshold: "BLOCK_MEDIUM_AND_ABOVE",
+					},
+					{
+						category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+						threshold: "BLOCK_MEDIUM_AND_ABOVE",
+					},
+					{
+						category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+						threshold: "BLOCK_MEDIUM_AND_ABOVE",
+					},
+				],
+			}),
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error("Gemini API error:", errorText);
+			throw new Error(`Gemini API request failed: ${response.status}`);
+		}
+
+		const result = await response.json();
+		const studyGuide = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+		if (!studyGuide) {
+			throw new Error("No study guide generated by Gemini");
+		}
+
+		return studyGuide;
+	} catch (error) {
+		console.error("Error calling Gemini API:", error);
+		throw new Error(
+			`Failed to generate study guide: ${
+				error instanceof Error ? error.message : "Unknown error"
+			}`
+		);
+	}
+}
+
+async function generateStudyGuideWithContinuation(
+	initialPrompt: string,
+	apiKey: string
+): Promise<string> {
+	let fullText = "";
+	let prompt = initialPrompt;
+
+	for (let i = 0; i < MAX_CONTINUATIONS; i++) {
+		const chunk = await generateStudyGuideWithGemini(prompt, apiKey);
+
+		if (!chunk || !chunk.trim()) {
+			break;
+		}
+
+		fullText += (fullText ? "\n\n" : "") + chunk.trim();
+
+		// Check for continuation signal
+		if (!chunk.trim().endsWith("CONTINUE")) {
+			return fullText;
+		}
+
+		// Prepare continuation prompt
+		const tail = fullText.slice(-1500); // give model context, not everything
+
+		prompt = `
+Continue exactly where you left off.
+Do NOT repeat any earlier content.
+Resume at the next heading or bullet.
+Do NOT reintroduce the study guide.
+Do NOT summarize.
+When finished, end with DONE.
+If you need more space, end with CONTINUE.
+
+Last generated text:
+"""
+${tail}
+"""
+`.trim();
+	}
+
+	throw new Error("Study guide generation exceeded continuation limit");
+}
 
 /* To invoke locally:
 
