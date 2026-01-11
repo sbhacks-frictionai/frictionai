@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
 import { getInteractionService } from "@/app/supabase-service/interaction-service";
+import { getExplanationService } from "@/app/supabase-service/explanation-service";
 import { useSearchParams } from "next/navigation";
 import { getDocumentService } from "@/app/supabase-service/document-service";
 // Set up PDF.js worker - use unpkg CDN which has all versions
@@ -38,6 +40,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [docService, setDocService] = useState(null);
 	const [chunkService, setChunkService] = useState(null);
 	const [top3Chunks, setTop3Chunks] = useState([]);
+	const [aiExplanationEnabled, setAiExplanationEnabled] = useState(true);
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -46,6 +49,29 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const goToNextPage = useCallback(() => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
+
+	const handleChunkClick = useCallback(async (chunk) => {
+		// Only trigger AI explanation if enabled
+		if (!aiExplanationEnabled) return;
+		
+		setAiModal({ open: true, loading: true, data: null, error: null });
+		
+		try {
+			const explanationService = getExplanationService();
+			
+			// Fetch AI explanation
+			const data = await explanationService.explainChunk(
+				chunk.id,
+				"detailed",
+				2
+			);
+			
+			setAiModal({ open: true, loading: false, data, error: null });
+		} catch (error) {
+			console.error("Error fetching AI explanation:", error);
+			setAiModal({ open: true, loading: false, data: null, error: error.message });
+		}
+	}, [aiExplanationEnabled]);
 
 	useEffect(() => {
 		const docService = getDocumentService();
@@ -592,6 +618,20 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 							</Button>
 						</div>
 
+						<div className="ai-toggle-controls flex items-center gap-2 ml-4">
+							<label 
+								htmlFor="ai-explanation-toggle"
+								className="flex items-center gap-2 text-sm font-medium cursor-pointer"
+							>
+								<Checkbox
+									id="ai-explanation-toggle"
+									checked={aiExplanationEnabled}
+									onCheckedChange={(checked) => setAiExplanationEnabled(checked === true)}
+								/>
+								<span>AI Explanations</span>
+							</label>
+						</div>
+
 						<div className="zoom-controls flex items-center gap-2 ml-auto">
 							<Button
 								variant="outline"
@@ -692,21 +732,10 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
-													onClick={async (e) => {
-														e.stopPropagation();
-														setAiModal({ open: true, loading: true, data: null, error: null });
-														try {
-															const { createClient } = await import("@/lib/supabase/client");
-															const supabase = createClient();
-															const { data, error } = await supabase.functions.invoke("chunk-explain", {
-																body: { chunk_id: chunk.id, detail_level: "detailed", context_radius: 2 }
-															});
-															if (error) throw error;
-															setAiModal({ open: true, loading: false, data, error: null });
-														} catch (error) {
-															setAiModal({ open: true, loading: false, data: null, error: error.message });
-														}
-													}}
+												onClick={(e) => {
+													e.stopPropagation();
+													handleChunkClick(chunk);
+												}}
 													title="Click for AI explanation"
 												/>
 											);

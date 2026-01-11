@@ -5,10 +5,10 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
 
 interface ChunkExplainRequest {
 	chunk_id: string;
-	user_id?: string;
 	context_radius?: number;
 	detail_level?: "brief" | "detailed" | "comprehensive";
 }
@@ -70,13 +70,8 @@ Below is content from the course materials. The student clicked on the SELECTED 
 
 Task: {{detail_instruction}}
 
-Focus on:
-1. What are the key concepts in the selected chunk?
-2. How does this relate to the surrounding material?
-3. What terminology or ideas might need clarification?
-4. What should the student pay attention to for understanding this topic?
-
-Provide your explanation in a clear, educational tone appropriate for this course level.
+Provide your explanation in a clear, educational tone appropriate for this course level. 
+Do not overexplain, be concise and to the point.
 `;
 
 const IMAGE_PROMPT_TEMPLATE = `
@@ -127,10 +122,16 @@ function fillTemplate(
 
 Deno.serve(async (req) => {
 	try {
+
+	if (req.method == "OPTIONS"){
+		return new Response("ok", {
+			headers: corsHeaders,
+			status: 200,
+		});
+	}
 		const payload: ChunkExplainRequest = await req.json();
 		const {
 			chunk_id,
-			user_id,
 			context_radius = 2,
 			detail_level = "detailed",
 		} = payload;
@@ -141,7 +142,7 @@ Deno.serve(async (req) => {
 					success: false,
 					error: "chunk_id is required",
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 400 }
+				{ headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
 			);
 		}
 
@@ -243,14 +244,6 @@ Deno.serve(async (req) => {
 				})
 				.eq("id", cachedExplanation.id);
 
-			// Track the interaction using atomic increment function
-			if (user_id) {
-				await supabase.rpc("increment_chunk_interaction", {
-					p_chunk_id: chunk_id,
-					p_user_id: user_id,
-					p_page_number: targetChunk.page_number,
-				});
-			}
 
 			// Get related chunks for response
 			const { data: contextChunks } = await supabase
@@ -276,7 +269,7 @@ Deno.serve(async (req) => {
 					was_cached: true,
 					times_viewed: cachedExplanation.times_viewed + 1,
 				} as ChunkExplainResponse),
-				{ headers: { "Content-Type": "application/json" }, status: 200 }
+				{ headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
 			);
 		}
 
@@ -344,7 +337,7 @@ Deno.serve(async (req) => {
 					page_number: targetChunk.page_number,
 					course_context: `${courseCode}: ${courseInfo.title}`,
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 200 }
+				{ headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
 			);
 		}
 
@@ -382,15 +375,6 @@ Deno.serve(async (req) => {
 			console.log(`Cached new explanation: ${storedExplanation?.id}`);
 		}
 
-		// Track the interaction using atomic increment function
-		if (user_id) {
-			await supabase.rpc("increment_chunk_interaction", {
-				p_chunk_id: chunk_id,
-				p_user_id: user_id,
-				p_page_number: targetChunk.page_number,
-			});
-		}
-
 		// Return the explanation
 		return new Response(
 			JSON.stringify({
@@ -407,7 +391,7 @@ Deno.serve(async (req) => {
 				was_cached: false,
 				times_viewed: 1,
 			} as ChunkExplainResponse),
-			{ headers: { "Content-Type": "application/json" }, status: 200 }
+			{ headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
 		);
 	} catch (error) {
 		console.error("Error generating explanation:", error);
@@ -419,7 +403,7 @@ Deno.serve(async (req) => {
 						? error.message
 						: "An error occurred",
 			} as ChunkExplainResponse),
-			{ headers: { "Content-Type": "application/json" }, status: 500 }
+			{ headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
 		);
 	}
 });
@@ -480,8 +464,7 @@ async function generateExplanation(
 					temperature: 0.7,
 					topK: 40,
 					topP: 0.95,
-					maxOutputTokens:
-						detailLevel === "comprehensive" ? 1536 : 1024,
+					maxOutputTokens: 8192,
 				},
 				safetySettings: [
 					{
