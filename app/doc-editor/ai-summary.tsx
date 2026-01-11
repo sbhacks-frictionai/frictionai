@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -8,18 +9,27 @@ import {
 	CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { getAiSummaryService } from "@/app/supabase-service/aisummary-service";
+
+interface StudyGuideResponse {
+	success: boolean;
+	study_guide?: string;
+	course_code?: string;
+	course_name?: string;
+	document_name?: string;
+	total_chunks?: number;
+	error?: string;
+}
 
 export function AiSummary() {
 	const searchParams = useSearchParams();
 	const documentId = searchParams.get("id");
-	const [isLoading, setIsLoading] = useState(false);
 	const [studyGuide, setStudyGuide] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const handleGenerateStudyGuide = async () => {
+	const handleGenerate = async () => {
 		if (!documentId) {
 			setError("Document ID not found");
 			return;
@@ -30,34 +40,94 @@ export function AiSummary() {
 		setStudyGuide(null);
 
 		try {
-			const supabase = createClient();
-			const { data, error: invokeError } =
-				await supabase.functions.invoke("getaiguide", {
-					body: JSON.stringify({ document_id: documentId }),
-					headers: {
-						"Content-Type": "application/json",
-					},
-				});
+			const service = getAiSummaryService();
+			const result = (await service.generateStudyGuide(
+				documentId
+			)) as StudyGuideResponse;
 
-			if (invokeError) {
-				throw invokeError;
-			}
-
-			if (data?.success && data?.study_guide) {
-				setStudyGuide(data.study_guide);
+			if (result.success && result.study_guide) {
+				setStudyGuide(result.study_guide);
 			} else {
-				throw new Error(
-					data?.error || "Failed to generate study guide"
-				);
+				setError(result.error || "Failed to generate study guide");
 			}
 		} catch (err) {
 			const errorMessage =
 				err instanceof Error ? err.message : "An error occurred";
 			setError(errorMessage);
-			console.error("Error calling getaiguide function:", err);
+			console.error("Error generating study guide:", err);
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	// Format plain text study guide with proper line breaks
+	const formatStudyGuide = (text: string) => {
+		// Split by lines and process each
+		const lines = text.split("\n");
+		const formatted: React.ReactElement[] = [];
+		let currentParagraph: string[] = [];
+		let key = 0;
+
+		const flushParagraph = () => {
+			if (currentParagraph.length > 0) {
+				const paraText = currentParagraph.join(" ").trim();
+				if (paraText) {
+					formatted.push(
+						<p key={key++} className="mb-3 text-sm leading-relaxed">
+							{paraText}
+						</p>
+					);
+				}
+				currentParagraph = [];
+			}
+		};
+
+		for (const line of lines) {
+			const trimmed = line.trim();
+
+			// Empty line = paragraph break
+			if (!trimmed) {
+				flushParagraph();
+				continue;
+			}
+
+			// Check if line starts with a number (numbered section)
+			const numberedMatch = trimmed.match(/^(\d+\.?\s+)(.+)/);
+			if (numberedMatch) {
+				flushParagraph();
+				formatted.push(
+					<div key={key++} className="mb-3">
+						<span className="font-semibold text-foreground">
+							{numberedMatch[1]}
+						</span>
+						<span className="text-sm text-foreground">
+							{numberedMatch[2]}
+						</span>
+					</div>
+				);
+				continue;
+			}
+
+			// Check if line is indented (sub-item)
+			if (line.startsWith(" ") || line.startsWith("\t")) {
+				flushParagraph();
+				formatted.push(
+					<div
+						key={key++}
+						className="ml-4 mb-2 text-sm text-muted-foreground"
+					>
+						{trimmed}
+					</div>
+				);
+				continue;
+			}
+
+			// Regular line - add to current paragraph
+			currentParagraph.push(trimmed);
+		}
+
+		flushParagraph();
+		return formatted;
 	};
 
 	return (
@@ -65,80 +135,41 @@ export function AiSummary() {
 			<CardHeader>
 				<CardTitle>AI Study Guide</CardTitle>
 				<CardDescription>
-					Generate a comprehensive study guide based on document
-					content and student engagement
+					Generate a comprehensive study guide for this document
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-4">
-					{!studyGuide && !error && (
-						<div className="flex flex-col items-center justify-center py-8 text-center">
-							<p className="text-sm text-muted-foreground mb-4">
-								Click the button below to generate an AI-powered
-								study guide for this document. The guide will
-								prioritize areas with high student engagement
-								and time spent.
-							</p>
-							<Button
-								onClick={handleGenerateStudyGuide}
-								disabled={isLoading || !documentId}
-							>
-								{isLoading
-									? "Generating..."
-									: "Generate Study Guide"}
-							</Button>
-						</div>
-					)}
-
-					{isLoading && (
-						<div className="flex items-center justify-center py-8">
-							<div className="text-sm text-muted-foreground">
-								Generating study guide... This may take a
-								moment.
-							</div>
-						</div>
-					)}
+					<Button
+						onClick={handleGenerate}
+						disabled={isLoading || !documentId}
+						className="w-full sm:w-auto"
+					>
+						{isLoading ? "Generating..." : "Generate Study Guide"}
+					</Button>
 
 					{error && (
-						<div className="p-4 rounded-lg border border-destructive bg-destructive/10">
-							<p className="text-sm text-destructive font-medium mb-2">
-								Error
-							</p>
-							<p className="text-sm text-destructive/80">
-								{error}
-							</p>
-							<Button
-								onClick={handleGenerateStudyGuide}
-								disabled={isLoading || !documentId}
-								className="mt-4"
-								variant="outline"
-							>
-								Try Again
-							</Button>
+						<div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
+							<p className="text-sm text-destructive">{error}</p>
 						</div>
 					)}
 
 					{studyGuide && (
-						<div className="space-y-4">
-							<div className="flex items-center justify-between">
-								<h3 className="text-lg font-semibold">
-									Study Guide
-								</h3>
-								<Button
-									onClick={handleGenerateStudyGuide}
-									disabled={isLoading}
-									variant="outline"
-									size="sm"
-								>
-									Regenerate
-								</Button>
-							</div>
+						<div className="mt-4 p-4 rounded-md bg-muted/50 border">
 							<div className="prose prose-sm max-w-none">
-								<div className="whitespace-pre-wrap text-sm leading-relaxed bg-muted/50 p-4 rounded-lg border max-h-[600px] overflow-y-auto">
-									{studyGuide}
+								<div className="text-sm text-foreground whitespace-pre-wrap">
+									{formatStudyGuide(studyGuide)}
 								</div>
 							</div>
 						</div>
+					)}
+
+					{!studyGuide && !isLoading && !error && (
+						<p className="text-sm text-muted-foreground">
+							Click the button above to generate an AI-powered
+							study guide based on the document content, student
+							interactions, and time spent on each page.
+						</p>
 					)}
 				</div>
 			</CardContent>

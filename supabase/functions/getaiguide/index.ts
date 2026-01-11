@@ -5,6 +5,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
 
 const MAX_CONTINUATIONS = 5; // safety guard
 
@@ -37,21 +38,16 @@ interface GetAIGuideResponse {
 	error?: string;
 }
 
-// CORS headers helper
-const corsHeaders = {
-	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Headers":
-		"authorization, x-client-info, apikey, content-type",
-	"Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
 Deno.serve(async (req) => {
-	// Handle CORS preflight requests
-	if (req.method === "OPTIONS") {
-		return new Response("ok", { headers: corsHeaders });
-	}
-
 	try {
+		// Handle CORS preflight requests
+		if (req.method === "OPTIONS") {
+			return new Response("ok", {
+				headers: corsHeaders,
+				status: 200,
+			});
+		}
+
 		// Parse request body
 		const { document_id }: GetAIGuideRequest = await req.json();
 
@@ -187,8 +183,8 @@ Deno.serve(async (req) => {
 		const timeByPage: Record<number, number> = {};
 		if (pageTimes) {
 			for (const pt of pageTimes) {
-				if (pt.page !== null && pt.time_spent !== null) {
-					timeByPage[pt.page] = pt.time_spent;
+				if (pt.page_number !== null && pt.total_time !== null) {
+					timeByPage[pt.page_number] = pt.total_time;
 				}
 			}
 		}
@@ -328,12 +324,7 @@ Generate the study guide now:`;
 				document_name: documentName,
 				total_chunks: chunks.length,
 			} as GetAIGuideResponse),
-			{
-				headers: {
-					...corsHeaders,
-					"Content-Type": "application/json",
-				},
-			}
+			{ headers: { ...corsHeaders, "Content-Type": "application/json" } }
 		);
 	} catch (error) {
 		console.error("Error in getaiguide function:", error);
@@ -343,10 +334,7 @@ Generate the study guide now:`;
 				error: error instanceof Error ? error.message : "Unknown error",
 			} as GetAIGuideResponse),
 			{
-				headers: {
-					...corsHeaders,
-					"Content-Type": "application/json",
-				},
+				headers: { ...corsHeaders, "Content-Type": "application/json" },
 				status: 500,
 			}
 		);
