@@ -58,7 +58,6 @@ export function ClassDocs() {
         alert("Please upload a PDF file");
         return;
       }
-      
       // Store the file and show the form
       setSelectedFile(file);
       setFileName(file.name.replace(".pdf", "")); // Pre-fill with file name without extension

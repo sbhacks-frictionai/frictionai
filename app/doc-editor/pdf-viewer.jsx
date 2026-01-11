@@ -5,8 +5,12 @@ import { Button } from '@/components/ui/button';
 // Set up PDF.js worker - use unpkg CDN which has all versions
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const PdfViewer = () => {
-  const [file, setFile] = useState(null);
+/**
+ * @param {Object} props
+ * @param {Blob|null} [props.file] - PDF blob to display
+ */
+const PdfViewer = ({ file: fileProp = null } = {}) => {
+  const [file, setFile] = useState(fileProp || null);
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
@@ -17,7 +21,6 @@ const PdfViewer = () => {
   const [currentHighlight, setCurrentHighlight] = useState(null);
   const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
   const containerRef = useRef(null);
-  const fileInputRef = useRef(null);
   const pageViewStartTime = useRef(null);
   const pageViewTimes = useRef({}); // Store time spent on each page
   const [currentPageViewTime, setCurrentPageViewTime] = useState(0); // Time on current page in seconds
@@ -123,21 +126,19 @@ const PdfViewer = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [file, mode, goToPrevPage, goToNextPage]);
 
+  // Update file when prop changes
+  useEffect(() => {
+    if (fileProp) {
+      setFile(fileProp);
+      setAnnotations([]);
+      setPageNumber(1);
+    }
+  }, [fileProp]);
+
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
     setPageNumber(1);
     setAnnotations([]);
-  };
-
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-      setAnnotations([]);
-      setPageNumber(1);
-    } else {
-      alert('Please select a valid PDF file');
-    }
   };
 
   const handlePageClick = (e, pageIndex) => {
@@ -248,23 +249,6 @@ const PdfViewer = () => {
   return (
     <div className="flex flex-col min-h-screen h-[130vh] w-full bg-muted">
       <div className="flex items-center gap-4 p-4 bg-background border-b border-border flex-wrap shadow-sm">
-        <div className="flex items-center">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            className="hidden"
-            id="pdf-upload"
-          />
-          <Button
-            variant="default"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            📄 Upload PDF
-          </Button>
-        </div>
-
         {file && (
           <>
             <div className="flex gap-2">
@@ -343,7 +327,7 @@ const PdfViewer = () => {
         
         {!file && (
           <div className="flex justify-center items-center h-full text-lg text-muted-foreground">
-            <p>Please upload a PDF file to get started</p>
+            <p>Loading PDF...</p>
           </div>
         )}
 
