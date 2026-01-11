@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
+import { getInteractionService } from "@/app/supabase-service/interaction-service";
 import { useSearchParams } from "next/navigation";
 
 // Set up PDF.js worker - use unpkg CDN which has all versions
@@ -26,6 +27,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [currentHighlight, setCurrentHighlight] = useState(null);
 	const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
+	const [interactions, setInteractions] = useState([]); // Array of interactions from database
 	const containerRef = useRef(null);
 
 	const goToPrevPage = useCallback(() => {
@@ -101,6 +103,31 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		fetchChunks();
 	}, [documentId]);
 
+	// Fetch interactions when documentId or pageNumber changes
+	useEffect(() => {
+		const fetchInteractions = async () => {
+			if (!documentId) {
+				setInteractions([]);
+				return;
+			}
+
+			try {
+				const interactionService = getInteractionService();
+				const fetchedInteractions =
+					await interactionService.getInteractionsByPage(
+						documentId,
+						pageNumber
+					);
+				setInteractions(fetchedInteractions || []);
+			} catch (error) {
+				console.error("Error fetching interactions:", error);
+				setInteractions([]);
+			}
+		};
+
+		fetchInteractions();
+	}, [documentId, pageNumber]);
+
 	const onDocumentLoadSuccess = ({ numPages }) => {
 		setNumPages(numPages);
 		setPageNumber(1);
@@ -115,14 +142,22 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 
 		// Check if click is within a chunk
 		const clickedChunk = getChunkAtPoint(x, y, currentPage);
-		
+
 		if (clickedChunk) {
-      // console.log(clickedChunk.id);
+			// console.log(clickedChunk.id);
 			// chunk clicked
 			const chunkService = getChunkService();
-			chunkService.incrementChunkCount(clickedChunk.id).then((data)=> {
-        console.log("chunk: ", clickedChunk.id, "\n", "count: ", data);
-      });
+			chunkService
+				.incrementChunkCount(clickedChunk.id, x, y, currentPage)
+				.then((data) => {
+					console.log(
+						"chunk: ",
+						clickedChunk.id,
+						"\n",
+						"count: ",
+						data
+					);
+				});
 		}
 
 		// Log click location to console
@@ -229,12 +264,132 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setScale((prev) => Math.max(prev - 0.2, 0.5));
 	};
 
-
 	const getChunksForPage = useCallback(
 		(pageNum) => {
 			return chunks.filter((chunk) => chunk.page_number === pageNum);
 		},
 		[chunks]
+	);
+
+	const getInteractionsForPage = useCallback(
+		(pageNum) => {
+			return interactions.filter(
+				(interaction) => interaction.page_number === pageNum
+			);
+		},
+		[interactions]
+	);
+
+	/**
+	 * Cluster nearby interactions and create blobs with density-based coloring
+	 * Similar to Twitch's tap map extension
+	 */
+	const getInteractionBlobs = useCallback(
+		(pageNum) => {
+			const pageInteractions = getInteractionsForPage(pageNum).filter(
+				(i) => i.x_coord != null && i.y_coord != null
+			);
+
+			if (pageInteractions.length === 0) return [];
+
+			// Clustering threshold - interactions within this distance are grouped
+			const CLUSTER_THRESHOLD = 20; // pixels
+			const clusters = [];
+
+			// Improved clustering: assign each point to nearest cluster, then recalculate centers
+			// This is more stable than the incremental approach
+			for (const interaction of pageInteractions) {
+				let nearestCluster = null;
+				let minDistance = Infinity;
+
+				// Find nearest cluster
+				for (const cluster of clusters) {
+					const distance = Math.sqrt(
+						Math.pow(interaction.x_coord - cluster.centerX, 2) +
+							Math.pow(interaction.y_coord - cluster.centerY, 2)
+					);
+
+					if (
+						distance < minDistance &&
+						distance <= CLUSTER_THRESHOLD
+					) {
+						minDistance = distance;
+						nearestCluster = cluster;
+					}
+				}
+
+				if (nearestCluster) {
+					// Add to nearest cluster
+					nearestCluster.interactions.push(interaction);
+				} else {
+					// Create new cluster
+					clusters.push({
+						centerX: interaction.x_coord,
+						centerY: interaction.y_coord,
+						interactions: [interaction],
+					});
+				}
+			}
+
+			// Recalculate cluster centers (centroid of all points in cluster)
+			clusters.forEach((cluster) => {
+				cluster.centerX =
+					cluster.interactions.reduce(
+						(sum, i) => sum + i.x_coord,
+						0
+					) / cluster.interactions.length;
+				cluster.centerY =
+					cluster.interactions.reduce(
+						(sum, i) => sum + i.y_coord,
+						0
+					) / cluster.interactions.length;
+				cluster.count = cluster.interactions.length;
+			});
+
+			// Calculate density scores and assign colors
+			const maxCount = Math.max(...clusters.map((c) => c.count), 1);
+			const minCount = Math.min(...clusters.map((c) => c.count), 1);
+
+			return clusters.map((cluster) => {
+				// Normalize density (0 to 1) - use logarithmic scale for better visualization
+				const rawDensity = cluster.count / maxCount;
+				const density = Math.pow(rawDensity, 0.7); // Slight curve for better visual distribution
+
+				// Interpolate color from green (low) -> yellow (medium) -> red (high)
+				// Green: rgb(34, 197, 94) - Yellow: rgb(234, 179, 8) - Red: rgb(239, 68, 68)
+				let red, green, blue;
+				if (density < 0.5) {
+					// Interpolate between green and yellow
+					const t = density * 2; // Scale to 0-1 for this segment
+					red = Math.round(34 + (234 - 34) * t);
+					green = Math.round(197 - (197 - 179) * t);
+					blue = Math.round(94 - (94 - 8) * t);
+				} else {
+					// Interpolate between yellow and red
+					const t = (density - 0.5) * 2; // Scale to 0-1 for this segment
+					red = Math.round(234 + (239 - 234) * t);
+					green = Math.round(179 - (179 - 68) * t);
+					blue = Math.round(8 - (8 - 68) * t);
+				}
+
+				// Blob size scales with count (min 25px, max 80px)
+				const minSize = 25;
+				const maxSize = 60;
+				const blobSize = minSize + (maxSize - minSize) * density;
+
+				// Opacity based on density (more opaque = higher density)
+				const opacity = 0.3; // 0.4 to 0.8
+
+				return {
+					...cluster,
+					color: `rgb(${red}, ${green}, ${blue})`,
+					size: blobSize,
+					opacity,
+					density,
+				};
+			});
+		},
+		[getInteractionsForPage]
 	);
 
 	// Check if a point (x, y) is within a chunk's boundaries
@@ -389,6 +544,52 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
+												/>
+											);
+										}
+									)}
+								</div>
+
+								{/* Overlay for interaction blobs (tap map visualization) */}
+								<div className="absolute top-0 left-0 w-full h-full z-[9] pointer-events-none">
+									{getInteractionBlobs(pageNumber).map(
+										(blob, index) => {
+											const scaledSize =
+												blob.size * scale;
+
+											return (
+												<div
+													key={`blob-${index}-${blob.centerX}-${blob.centerY}`}
+													className="absolute rounded-full blur-[2px]"
+													style={{
+														left: `${
+															blob.centerX * scale
+														}px`,
+														top: `${
+															blob.centerY * scale
+														}px`,
+														width: `${scaledSize}px`,
+														height: `${scaledSize}px`,
+														transform:
+															"translate(-50%, -50%)",
+														backgroundColor:
+															blob.color,
+														opacity: blob.opacity,
+														boxShadow: `0 0 ${
+															scaledSize * 0.5
+														}px ${blob.color}`,
+													}}
+													title={`${
+														blob.count
+													} click${
+														blob.count > 1
+															? "s"
+															: ""
+													} at (${blob.centerX.toFixed(
+														1
+													)}, ${blob.centerY.toFixed(
+														1
+													)})`}
 												/>
 											);
 										}
