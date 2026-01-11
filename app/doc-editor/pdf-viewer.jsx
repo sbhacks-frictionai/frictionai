@@ -111,10 +111,23 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		const rect = e.currentTarget.getBoundingClientRect();
 		const x = (e.clientX - rect.left) / scale;
 		const y = (e.clientY - rect.top) / scale;
+		const currentPage = pageIndex + 1;
+
+		// Check if click is within a chunk
+		const clickedChunk = getChunkAtPoint(x, y, currentPage);
+		
+		if (clickedChunk) {
+      // console.log(clickedChunk.id);
+			// chunk clicked
+			const chunkService = getChunkService();
+			chunkService.incrementChunkCount(clickedChunk.id).then((data)=> {
+        console.log("chunk: ", clickedChunk.id, "\n", "count: ", data);
+      });
+		}
 
 		// Log click location to console
 		console.log("PDF Click Location:", {
-			page: pageIndex + 1,
+			page: currentPage,
 			x: x,
 			y: y,
 			scale: scale,
@@ -122,6 +135,8 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			clientY: e.clientY,
 			relativeX: x,
 			relativeY: y,
+			withinChunk: clickedChunk !== undefined,
+			chunkId: clickedChunk?.id,
 		});
 
 		if (mode === "view") return;
@@ -206,10 +221,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		}
 	};
 
-	const deleteAnnotation = (id) => {
-		setAnnotations(annotations.filter((ann) => ann.id !== id));
-	};
-
 	const zoomIn = () => {
 		setScale((prev) => Math.min(prev + 0.2, 3.0));
 	};
@@ -218,9 +229,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setScale((prev) => Math.max(prev - 0.2, 0.5));
 	};
 
-	const getAnnotationsForPage = (pageNum) => {
-		return annotations.filter((ann) => ann.page === pageNum);
-	};
 
 	const getChunksForPage = useCallback(
 		(pageNum) => {
@@ -228,6 +236,22 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		},
 		[chunks]
 	);
+
+	// Check if a point (x, y) is within a chunk's boundaries
+	const isPointInChunk = (x, y, chunk) => {
+		return (
+			x >= chunk.x_min &&
+			x <= chunk.x_max &&
+			y >= chunk.y_min &&
+			y <= chunk.y_max
+		);
+	};
+
+	// Find the chunk that contains the given point
+	const getChunkAtPoint = (x, y, pageNum) => {
+		const pageChunks = getChunksForPage(pageNum);
+		return pageChunks.find((chunk) => isPointInChunk(x, y, chunk));
+	};
 
 	// Log chunks whenever page changes
 	useEffect(() => {
@@ -319,13 +343,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 							<div
 								className="relative shadow-lg bg-background border border-border"
 								onClick={(e) => {
-									// Close dialog bubble if clicking outside of it
-									if (
-										selectedHighlight &&
-										e.target === e.currentTarget
-									) {
-										setSelectedHighlight(null);
-									}
 									handlePageClick(e, pageNumber - 1);
 								}}
 								onMouseDown={(e) =>
@@ -376,198 +393,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											);
 										}
 									)}
-								</div>
-
-								{/* Overlay for annotations */}
-								<div
-									className="absolute top-0 left-0 w-full h-full z-10"
-									style={{
-										pointerEvents:
-											mode === "view" ? "auto" : "auto",
-										cursor:
-											mode === "text"
-												? "crosshair"
-												: mode === "highlight"
-												? "crosshair"
-												: "pointer",
-									}}
-								>
-									{getAnnotationsForPage(pageNumber).map(
-										(annotation) => {
-											if (annotation.type === "text") {
-												return (
-													<div
-														key={annotation.id}
-														className="absolute cursor-pointer z-[11]"
-														style={{
-															left: `${
-																annotation.x *
-																scale
-															}px`,
-															top: `${
-																annotation.y *
-																scale
-															}px`,
-															transform: `scale(${scale})`,
-															transformOrigin:
-																"top left",
-														}}
-														onClick={(e) => {
-															e.stopPropagation();
-															if (
-																confirm(
-																	"Delete this annotation?"
-																)
-															) {
-																deleteAnnotation(
-																	annotation.id
-																);
-															}
-														}}
-													>
-														<div className="bg-yellow-200 dark:bg-yellow-600 p-1 px-2 rounded border border-yellow-400 dark:border-yellow-500 text-xs max-w-[200px] break-words shadow-md transition-transform hover:scale-105 z-[12]">
-															{annotation.text}
-														</div>
-													</div>
-												);
-											} else if (
-												annotation.type === "highlight"
-											) {
-												return (
-													<div
-														key={annotation.id}
-														className="absolute bg-yellow-200/30 dark:bg-yellow-600/30 border-2 border-yellow-400 dark:border-yellow-500 cursor-pointer z-[11] transition-colors hover:bg-yellow-200/50 dark:hover:bg-yellow-600/50 hover:z-[12]"
-														style={{
-															left: `${
-																annotation.x *
-																scale
-															}px`,
-															top: `${
-																annotation.y *
-																scale
-															}px`,
-															width: `${
-																annotation.width *
-																scale
-															}px`,
-															height: `${
-																annotation.height *
-																scale
-															}px`,
-															transform: `scale(${scale})`,
-															transformOrigin:
-																"top left",
-														}}
-														onClick={(e) => {
-															e.stopPropagation();
-															if (
-																mode === "view"
-															) {
-																// Show dialog bubble next to the highlight
-																setSelectedHighlight(
-																	{
-																		id: annotation.id,
-																		x:
-																			annotation.x +
-																			annotation.width,
-																		y: annotation.y,
-																		width: annotation.width,
-																		height: annotation.height,
-																		page: annotation.page,
-																	}
-																);
-															} else {
-																// In other modes, show delete confirmation
-																if (
-																	confirm(
-																		"Delete this highlight?"
-																	)
-																) {
-																	deleteAnnotation(
-																		annotation.id
-																	);
-																}
-															}
-														}}
-													/>
-												);
-											}
-											return null;
-										}
-									)}
-
-									{/* Current highlight being drawn */}
-									{currentHighlight &&
-										mode === "highlight" &&
-										isDrawing && (
-											<div
-												className="absolute bg-yellow-200/40 dark:bg-yellow-600/40 border-2 border-dashed border-yellow-400 dark:border-yellow-500 pointer-events-none"
-												style={{
-													left: `${
-														currentHighlight.x *
-														scale
-													}px`,
-													top: `${
-														currentHighlight.y *
-														scale
-													}px`,
-													width: `${
-														currentHighlight.width *
-														scale
-													}px`,
-													height: `${
-														currentHighlight.height *
-														scale
-													}px`,
-													transform: `scale(${scale})`,
-													transformOrigin: "top left",
-												}}
-											/>
-										)}
-
-									{/* Dialog bubble for selected highlight */}
-									{selectedHighlight &&
-										selectedHighlight.page ===
-											pageNumber && (
-											<div
-												className="absolute z-[20] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-[200px] max-w-[300px]"
-												style={{
-													left: `${
-														selectedHighlight.x *
-															scale +
-														10
-													}px`,
-													top: `${
-														selectedHighlight.y *
-														scale
-													}px`,
-													transform: `scale(${scale})`,
-													transformOrigin: "top left",
-												}}
-												onClick={(e) =>
-													e.stopPropagation()
-												}
-											>
-												<div className="flex items-start justify-between gap-2">
-													<div className="flex-1">
-														<p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-															Highlight Options
-														</p>
-													</div>
-													<button
-														onClick={() =>
-															setSelectedHighlight(
-																null
-															)
-														}
-														className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none ml-2"
-														aria-label="Close"
-													>
-														×
-													</button>
-												</div>
-											</div>
-										)}
 								</div>
 							</div>
 						</Document>

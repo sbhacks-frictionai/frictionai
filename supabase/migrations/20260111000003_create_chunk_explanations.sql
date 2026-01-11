@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS "public"."chunk_explanations" (
     
     -- Track usage and quality
     "times_viewed" integer DEFAULT 0,
+    "click_count" integer DEFAULT 0,
     "helpful_votes" integer DEFAULT 0,
     "unhelpful_votes" integer DEFAULT 0,
     

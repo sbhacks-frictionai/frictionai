@@ -90,5 +90,18 @@ export const getChunkService = () => {
 			if (error) throw error;
 			return data;
 		},
+
+		incrementChunkCount: async (chunkId) => {
+			const { data, error } = await supabase.rpc(
+				"increment_chunk",
+				{ chunkid: chunkId }
+			);
+			
+			if (error) {
+				console.error("Failed to increment:", error);
+				return null;
+			}
+			return data;
+		}
 	};
 };
