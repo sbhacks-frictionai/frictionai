@@ -9,25 +9,26 @@ import { getClassService } from "@/app/supabase-service/class-service";
 
 export function ClassesGrid() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [classNames, setClassNames] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchClasses = async () => {
       const classes = await getClassService().getClasses();
-      setClassNames(classes.map((cls) => cls["department"] + " " + cls["course_number"]));
+      setClasses(classes);
     };
     fetchClasses();
   }, []);
 
   const filteredClasses = useMemo(() => {
     if (!searchQuery.trim()) {
-      return classNames;
+      return classes;
     }
     const query = searchQuery.toLowerCase().trim();
-    return classNames.filter((name) =>
-      name.toLowerCase().replace(/\s+/g, "").includes(query.replace(/\s+/g, ""))
-    );
-  }, [searchQuery, classNames]);
+    return classes.filter((cls) => {
+      const className = cls["department"] + " " + cls["course_number"];
+      return className.toLowerCase().replace(/\s+/g, "").includes(query.replace(/\s+/g, ""));
+    });
+  }, [searchQuery, classes]);
 
   return (
     <div className="flex flex-col gap-8 w-full">
@@ -50,23 +51,27 @@ export function ClassesGrid() {
         <h2 className="text-2xl font-bold mb-6">Classes</h2>
         {filteredClasses.length > 0 ? (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {filteredClasses.map((className) => (
-              <Link
-                key={className}
-                href={`/class-docs?class=${encodeURIComponent(className)}`}
-              >
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                  <CardHeader>
-                    <CardTitle className="text-lg">{className}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Click to open class documents
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+            {filteredClasses.map((cls) => {
+              const className = cls["department"] + " " + cls["course_number"];
+              const courseId = cls["id"] ;
+              return (
+                <Link
+                  key={courseId}
+                  href={`/class-docs?class=${encodeURIComponent(className)}&course_id=${courseId}`}
+                >
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
+                    <CardHeader>
+                      <CardTitle className="text-lg">{className}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        Click to open class documents
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12">
