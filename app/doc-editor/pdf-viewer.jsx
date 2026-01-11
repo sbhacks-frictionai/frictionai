@@ -50,10 +50,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
 
-	const handleChunkClick = useCallback(async (chunk) => {
-		// Only trigger AI explanation if enabled
-		if (!aiExplanationEnabled) return;
-		
+	const openAIExplanation = useCallback(async (chunkId) => {
 		setAiModal({ open: true, loading: true, data: null, error: null });
 		
 		try {
@@ -61,7 +58,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			
 			// Fetch AI explanation
 			const data = await explanationService.explainChunk(
-				chunk.id,
+				chunkId,
 				"detailed",
 				2
 			);
@@ -71,7 +68,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			console.error("Error fetching AI explanation:", error);
 			setAiModal({ open: true, loading: false, data: null, error: error.message });
 		}
-	}, [aiExplanationEnabled]);
+	}, []);
 
 	useEffect(() => {
 		const docService = getDocumentService();
@@ -244,7 +241,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		previousPageNumber.current = 1;
 	};
 
-	const handlePageClick = (e, pageIndex) => {
+	const handlePageClick = async (e, pageIndex) => {
 		const rect = e.currentTarget.getBoundingClientRect();
 		const x = (e.clientX - rect.left) / scale;
 		const y = (e.clientY - rect.top) / scale;
@@ -254,8 +251,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		const clickedChunk = getChunkAtPoint(x, y, currentPage);
 
 		if (clickedChunk) {
-			// console.log(clickedChunk.id);
-			// chunk clicked
+			// chunk clicked - always record click data
 			const chunkService = getChunkService();
 
 			// Optimistically update local state immediately for real-time feedback
@@ -321,6 +317,11 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						)
 					);
 				});
+
+			// Open AI explanation modal if enabled
+			if (aiExplanationEnabled) {
+				await openAIExplanation(clickedChunk.id);
+			}
 
 			if (
 				clickedChunk.id === top3Chunks[0]?.id ||
@@ -753,10 +754,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
-												onClick={(e) => {
-													e.stopPropagation();
-													handleChunkClick(chunk);
-												}}
 													title="Click for AI explanation"
 												/>
 											);
