@@ -227,7 +227,10 @@ Deno.serve(async (req) => {
 						based_on_date: new Date().toISOString().split("T")[0],
 						was_cached: true,
 					} as StudyGuideResponse),
-					{ headers: { "Content-Type": "application/json" }, status: 200 }
+					{
+						headers: { "Content-Type": "application/json" },
+						status: 200,
+					}
 				);
 			}
 		}
@@ -313,7 +316,9 @@ Deno.serve(async (req) => {
 						: content;
 
 				return `
-${index + 1}. Page ${hz.page_number} (${contentType}) - ${hz.interactions} clicks (Heat: ${hz.heat_score})
+${index + 1}. Page ${hz.page_number} (${contentType}) - ${
+					hz.interactions
+				} clicks (Heat: ${hz.heat_score})
    Content: ${truncatedContent}
 `;
 			})
@@ -335,7 +340,9 @@ Based on ${totalInteractions} student interactions, here are the areas needing f
 ${hotZonesList}
 
 📝 RECOMMENDATION:
-Focus on pages ${topPages.join(", ")}. These sections have the most student engagement, indicating either high importance or difficulty.
+Focus on pages ${topPages.join(
+				", "
+			)}. These sections have the most student engagement, indicating either high importance or difficulty.
 
 For detailed explanations, click on specific chunks in the document viewer.
 `;
@@ -398,7 +405,8 @@ For detailed explanations, click on specific chunks in the document viewer.
 			JSON.stringify({
 				success: true,
 				study_guide: studyGuide,
-				generated_at: storedGuide?.created_at || new Date().toISOString(),
+				generated_at:
+					storedGuide?.created_at || new Date().toISOString(),
 				based_on_date: new Date().toISOString().split("T")[0],
 				hot_zones_count: hotZones.length,
 				total_interactions: totalInteractions,
@@ -467,10 +475,10 @@ async function generateStudyGuideWithAI(
 					},
 				],
 				generationConfig: {
-					temperature: 0.7,
+					temperature: 0.4,
 					topK: 40,
 					topP: 0.95,
-					maxOutputTokens: detailLevel === "detailed" ? 2048 : 1024,
+					maxOutputTokens: 8192,
 				},
 				safetySettings: [
 					{
