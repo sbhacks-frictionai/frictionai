@@ -9,7 +9,7 @@ import { CommentSection } from "./comment-section";
 
 export function DocEditor() {
   const searchParams = useSearchParams();
-  const className = searchParams.get("class") || "Document";
+  const className = searchParams.get("doc") || "Document";
 
   return (
     <div className="flex-1 w-full flex flex-col gap-8">

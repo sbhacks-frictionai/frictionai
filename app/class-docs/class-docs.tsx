@@ -1,5 +1,8 @@
+"use client";
+
 import { Footer } from "@/components/footer";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 // Fake course data for preview/testing
 const courseData = [
@@ -33,14 +36,20 @@ const courseData = [
   },
 ];
 
+
+
 export function ClassDocs() {
+  const searchParams = useSearchParams();
+  const className = searchParams.get("class") || "Class";
+
+
   return (
     <div className="flex-1 w-full flex flex-col gap-8">
       {/* Main Content */}
       <div className="flex-1 w-full max-w-7xl mx-auto p-5 space-y-6">
         {/* Class Title */}
         <div className="mb-4">
-          <h1 className="text-3xl font-bold">CMPSC 16: Problem Solving</h1>
+          <h1 className="text-3xl font-bold">{className}</h1>
         </div>
 
         {/* Search Bar */}

@@ -4,37 +4,8 @@ import { Footer } from "@/components/footer";
 import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
+import { ClassesGrid } from "@/components/classes-grid";
 
-// Dummy class data to render; in a real app this could come from a database or API
-const CLASSES = [
-  { id: 1, name: "Algebra II" },
-  { id: 2, name: "AP Biology" },
-  { id: 3, name: "English III" },
-  { id: 4, name: "US History" },
-];
-
-function ClassesGrid() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-      {CLASSES.map((cls) => (
-        <Link
-          key={cls.id}
-          href="/class-docs"
-          className="group block rounded-lg border border-muted bg-card shadow hover:shadow-lg transition p-6 hover:bg-accent hover:border-accent-foreground focus:outline-none focus-visible:ring"
-        >
-          <div className="flex flex-col items-start">
-            <h2 className="text-lg font-semibold mb-2 group-hover:text-accent-foreground transition">
-              {cls.name}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Docs and AI tools for {cls.name}
-            </p>
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
-}
 
 export default function Home() {
   return (

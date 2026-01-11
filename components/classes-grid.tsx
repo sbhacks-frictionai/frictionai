@@ -54,7 +54,7 @@ export function ClassesGrid() {
             {filteredClasses.map((className) => (
               <Link
                 key={className}
-                href={`/doc-editor?class=${encodeURIComponent(className)}`}
+                href={`/class-docs?class=${encodeURIComponent(className)}`}
               >
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                   <CardHeader>
