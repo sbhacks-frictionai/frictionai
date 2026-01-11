@@ -113,10 +113,11 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 
 			try {
 				const interactionService = getInteractionService();
-				const fetchedInteractions = await interactionService.getInteractionsByPage(
-					documentId,
-					pageNumber
-				);
+				const fetchedInteractions =
+					await interactionService.getInteractionsByPage(
+						documentId,
+						pageNumber
+					);
 				setInteractions(fetchedInteractions || []);
 			} catch (error) {
 				console.error("Error fetching interactions:", error);
@@ -141,14 +142,22 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 
 		// Check if click is within a chunk
 		const clickedChunk = getChunkAtPoint(x, y, currentPage);
-		
+
 		if (clickedChunk) {
-      // console.log(clickedChunk.id);
+			// console.log(clickedChunk.id);
 			// chunk clicked
 			const chunkService = getChunkService();
-			chunkService.incrementChunkCount(clickedChunk.id, x, y, currentPage).then((data)=> {
-        console.log("chunk: ", clickedChunk.id, "\n", "count: ", data);
-      });
+			chunkService
+				.incrementChunkCount(clickedChunk.id, x, y, currentPage)
+				.then((data) => {
+					console.log(
+						"chunk: ",
+						clickedChunk.id,
+						"\n",
+						"count: ",
+						data
+					);
+				});
 		}
 
 		// Log click location to console
@@ -255,7 +264,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setScale((prev) => Math.max(prev - 0.2, 0.5));
 	};
 
-
 	const getChunksForPage = useCallback(
 		(pageNum) => {
 			return chunks.filter((chunk) => chunk.page_number === pageNum);
@@ -265,9 +273,112 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 
 	const getInteractionsForPage = useCallback(
 		(pageNum) => {
-			return interactions.filter((interaction) => interaction.page_number === pageNum);
+			return interactions.filter(
+				(interaction) => interaction.page_number === pageNum
+			);
 		},
 		[interactions]
+	);
+
+	/**
+	 * Cluster nearby interactions and create blobs with density-based coloring
+	 * Similar to Twitch's tap map extension
+	 */
+	const getInteractionBlobs = useCallback(
+		(pageNum) => {
+			const pageInteractions = getInteractionsForPage(pageNum).filter(
+				(i) => i.x_coord != null && i.y_coord != null
+			);
+
+			if (pageInteractions.length === 0) return [];
+
+			// Clustering threshold - interactions within this distance are grouped
+			const CLUSTER_THRESHOLD = 40; // pixels
+			const clusters = [];
+
+			// Improved clustering: assign each point to nearest cluster, then recalculate centers
+			// This is more stable than the incremental approach
+			for (const interaction of pageInteractions) {
+				let nearestCluster = null;
+				let minDistance = Infinity;
+
+				// Find nearest cluster
+				for (const cluster of clusters) {
+					const distance = Math.sqrt(
+						Math.pow(interaction.x_coord - cluster.centerX, 2) +
+							Math.pow(interaction.y_coord - cluster.centerY, 2)
+					);
+
+					if (
+						distance < minDistance &&
+						distance <= CLUSTER_THRESHOLD
+					) {
+						minDistance = distance;
+						nearestCluster = cluster;
+					}
+				}
+
+				if (nearestCluster) {
+					// Add to nearest cluster
+					nearestCluster.interactions.push(interaction);
+				} else {
+					// Create new cluster
+					clusters.push({
+						centerX: interaction.x_coord,
+						centerY: interaction.y_coord,
+						interactions: [interaction],
+					});
+				}
+			}
+
+			// Recalculate cluster centers (centroid of all points in cluster)
+			clusters.forEach((cluster) => {
+				cluster.centerX =
+					cluster.interactions.reduce(
+						(sum, i) => sum + i.x_coord,
+						0
+					) / cluster.interactions.length;
+				cluster.centerY =
+					cluster.interactions.reduce(
+						(sum, i) => sum + i.y_coord,
+						0
+					) / cluster.interactions.length;
+				cluster.count = cluster.interactions.length;
+			});
+
+			// Calculate density scores and assign colors
+			const maxCount = Math.max(...clusters.map((c) => c.count), 1);
+			const minCount = Math.min(...clusters.map((c) => c.count), 1);
+
+			return clusters.map((cluster) => {
+				// Normalize density (0 to 1) - use logarithmic scale for better visualization
+				const rawDensity = cluster.count / maxCount;
+				const density = Math.pow(rawDensity, 0.7); // Slight curve for better visual distribution
+
+				// Interpolate color from green (low) to red (high)
+				// Green: rgb(34, 197, 94) - Red: rgb(239, 68, 68)
+				const red = Math.round(34 + (239 - 34) * density);
+				const green = Math.round(197 - (197 - 68) * density);
+				const blue = Math.round(94 - (94 - 68) * density);
+
+				// Blob size scales with count (min 25px, max 80px)
+				const minSize = 25;
+				const maxSize = 80;
+				const blobSize = minSize + (maxSize - minSize) * density;
+
+				// Opacity based on density (more opaque = higher density)
+				const opacity = 0.4 + density * 0.4; // 0.4 to 0.8
+
+				return {
+					...cluster,
+					color: `rgb(${red}, ${green}, ${blue})`,
+					size: blobSize,
+					opacity,
+					density,
+				};
+			});
+		},
+		[getInteractionsForPage]
 	);
 
 	// Check if a point (x, y) is within a chunk's boundaries
@@ -428,35 +539,46 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 									)}
 								</div>
 
-								{/* Overlay for interactions (red dots) */}
+								{/* Overlay for interaction blobs (tap map visualization) */}
 								<div className="absolute top-0 left-0 w-full h-full z-[9] pointer-events-none">
-									{getInteractionsForPage(pageNumber).map(
-										(interaction) => {
-											// Only render if coordinates exist
-											if (
-												interaction.x_coord == null ||
-												interaction.y_coord == null
-											) {
-												return null;
-											}
+									{getInteractionBlobs(pageNumber).map(
+										(blob, index) => {
+											const scaledSize =
+												blob.size * scale;
 
 											return (
 												<div
-													key={interaction.id}
-													className="absolute bg-red-500 rounded-full"
+													key={`blob-${index}-${blob.centerX}-${blob.centerY}`}
+													className="absolute rounded-full blur-sm"
 													style={{
 														left: `${
-															interaction.x_coord * scale
+															blob.centerX * scale
 														}px`,
 														top: `${
-															interaction.y_coord * scale
+															blob.centerY * scale
 														}px`,
-														width: `${6 * scale}px`,
-														height: `${6 * scale}px`,
-														transform: "translate(-50%, -50%)",
-														boxShadow: "0 0 2px rgba(0,0,0,0.3)",
+														width: `${scaledSize}px`,
+														height: `${scaledSize}px`,
+														transform:
+															"translate(-50%, -50%)",
+														backgroundColor:
+															blob.color,
+														opacity: blob.opacity,
+														boxShadow: `0 0 ${
+															scaledSize * 0.5
+														}px ${blob.color}`,
 													}}
-													title={`Click at ${interaction.x_coord.toFixed(1)}, ${interaction.y_coord.toFixed(1)}`}
+													title={`${
+														blob.count
+													} click${
+														blob.count > 1
+															? "s"
+															: ""
+													} at (${blob.centerX.toFixed(
+														1
+													)}, ${blob.centerY.toFixed(
+														1
+													)})`}
 												/>
 											);
 										}
