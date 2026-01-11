@@ -2,7 +2,7 @@
 
 import { Footer } from "@/components/footer";
 import { useSearchParams } from "next/navigation";
-import { PdfEditor } from "./pdf-editor";
+import PdfViewer from "./pdf-viewer";
 import { AiSummary } from "./ai-summary";
 import { StruggleMap } from "./struggle-map";
 import { CommentSection } from "./comment-section";
@@ -21,7 +21,7 @@ export function DocEditor() {
         </div>
 
         {/* PDF Editor Area */}
-        <PdfEditor />
+        <PdfViewer />
 
         {/* AI Summary Area */}
         <AiSummary />

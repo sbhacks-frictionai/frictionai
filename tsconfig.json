@@ -29,6 +29,6 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
-  ],
+, "app/doc-editor/pdf-viewer.jsx"  ],
   "exclude": ["node_modules"]
 }
