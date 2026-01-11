@@ -1,0 +1,200 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                   HEATMAP API - QUICK REFERENCE                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+📊 MAIN FUNCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. increment_chunk_interaction
+   Purpose: Track a user interaction with a chunk
+   
+   const count = await supabase.rpc('increment_chunk_interaction', {
+     p_chunk_id: 'uuid',      // Required
+     p_user_id: 'uuid',       // Optional (null for anonymous)
+     p_x_coord: 100.5,        // Optional
+     p_y_coord: 200.3,        // Optional
+     p_page_number: 1         // Optional
+   });
+   
+   Returns: integer (new interaction count)
+   
+   ⚠️  Already integrated in chunk-explain function!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. get_document_heatmap
+   Purpose: Get normalized heatmap for all chunks in a document
+   
+   const heatmap = await supabase.rpc('get_document_heatmap', {
+     p_document_id: 'uuid'
+   });
+   
+   Returns: Array of {
+     chunk_id: uuid,
+     page_number: int,
+     interactions: int,         // Raw click count
+     heat_score: float,         // 0.0 to 1.0 (normalized)
+     is_hot_zone: boolean,      // true if ≥ 0.8
+     content_preview: string,   // First 100 chars
+     x_min, x_max, y_min, y_max: float  // Bounding box
+   }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3. get_document_hot_zones
+   Purpose: Get only the difficult sections (heat ≥ threshold)
+   
+   const hotZones = await supabase.rpc('get_document_hot_zones', {
+     p_document_id: 'uuid',
+     p_threshold: 0.8          // Optional, default 0.8
+   });
+   
+   Returns: Same as heatmap, but filtered to hot chunks only
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4. get_chunk_interaction_timeline
+   Purpose: Get recent interaction history for a chunk
+   
+   const timeline = await supabase.rpc('get_chunk_interaction_timeline', {
+     p_chunk_id: 'uuid',
+     p_limit: 50               // Optional, default 50
+   });
+   
+   Returns: Array of {
+     interaction_id: uuid,
+     user_id: uuid,
+     created_at: timestamp,
+     x_coord: float,
+     y_coord: float,
+     page_number: int
+   }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 FRONTEND PATTERNS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PATTERN 1: Heatmap Overlay
+──────────────────────────────────────────────────────────────────────────
+
+  const heatmap = await supabase.rpc('get_document_heatmap', {
+    p_document_id: documentId
+  });
+
+  heatmap.forEach(chunk => {
+    // Draw colored overlay
+    const opacity = chunk.heat_score * 0.3;  // 0-30%
+    // Position: chunk.x_min, y_min, width: x_max-x_min, height: y_max-y_min
+  });
+
+──────────────────────────────────────────────────────────────────────────
+
+PATTERN 2: Hot Zones Widget
+──────────────────────────────────────────────────────────────────────────
+
+  const hotZones = await supabase.rpc('get_document_hot_zones', {
+    p_document_id: documentId
+  });
+
+  return (
+    <div>
+      <h3>🔥 Difficult Sections ({hotZones.length})</h3>
+      {hotZones.map(zone => (
+        <div key={zone.chunk_id}>
+          <span>Page {zone.page_number}</span>
+          <span>{(zone.heat_score * 100).toFixed(0)}% difficulty</span>
+          <p>{zone.content_preview}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+──────────────────────────────────────────────────────────────────────────
+
+PATTERN 3: Manual Tracking (if needed)
+──────────────────────────────────────────────────────────────────────────
+
+  // Usually automatic via chunk-explain, but you can call manually:
+  await supabase.rpc('increment_chunk_interaction', {
+    p_chunk_id: clickedChunkId,
+    p_user_id: currentUser?.id || null
+  });
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 COLOR SCHEMES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Heat Score → Color Mapping:
+
+  1.0 - 0.8  →  🔴 Red     (Hot Zone)
+  0.8 - 0.5  →  🟡 Yellow  (Warm)
+  0.5 - 0.2  →  🟢 Green   (Cool)
+  0.2 - 0.0  →  🔵 Blue    (Cold)
+
+Opacity Suggestion:
+
+  const opacity = heat_score * 0.3;  // 0% to 30% opacity
+  background: `rgba(255, 0, 0, ${opacity})`;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 ANALYTICS QUERIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Top Documents by Engagement:
+──────────────────────────────────────────────────────────────────────────
+
+  SELECT d.file_name, d.total_clicks
+  FROM documents d
+  ORDER BY d.total_clicks DESC
+  LIMIT 10;
+
+──────────────────────────────────────────────────────────────────────────
+
+Most Clicked Chunks:
+──────────────────────────────────────────────────────────────────────────
+
+  SELECT c.id, c.content, c.interactions
+  FROM chunks c
+  ORDER BY c.interactions DESC
+  LIMIT 20;
+
+──────────────────────────────────────────────────────────────────────────
+
+Daily Engagement:
+──────────────────────────────────────────────────────────────────────────
+
+  SELECT DATE(created_at), COUNT(*) as interactions
+  FROM interactions
+  WHERE created_at >= NOW() - INTERVAL '7 days'
+  GROUP BY DATE(created_at)
+  ORDER BY DATE(created_at) DESC;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧪 TESTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run test suite:
+  ./test_heatmap.sh
+
+Manual test:
+  docker exec supabase_db_frictionai psql -U postgres -c \
+    "SELECT * FROM get_document_heatmap('your-doc-id'::uuid) LIMIT 3;"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 MORE INFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+See HEATMAP_GUIDE.md for:
+  • Complete API documentation
+  • Frontend examples
+  • Security setup
+  • Troubleshooting
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Ready to build your heatmap UI! 🚀

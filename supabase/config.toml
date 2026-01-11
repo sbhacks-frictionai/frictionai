@@ -359,8 +359,8 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+[edge_runtime.secrets]
+GEMINI_API_KEY = "env(GEMINI_API_KEY)"
 
 [analytics]
 enabled = true
@@ -413,3 +413,9 @@ entrypoint = "./functions/chunk-summary/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/chunk-summary/*.html" ]
+
+[functions.chunk-explain]
+enabled = true
+verify_jwt = true
+import_map = "./functions/chunk-explain/deno.json"
+entrypoint = "./functions/chunk-explain/index.ts"
