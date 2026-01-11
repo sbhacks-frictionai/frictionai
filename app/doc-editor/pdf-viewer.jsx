@@ -30,6 +30,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
 	const [interactions, setInteractions] = useState([]); // Array of interactions from database
 	const [selectedChunk, setSelectedChunk] = useState(null); // Chunk selected for popup display
+	const [aiModal, setAiModal] = useState({ open: false, loading: false, data: null, error: null });
 	const containerRef = useRef(null);
 	const pageViewStartTime = useRef(null); // Track when current page view started
 	const previousPageNumber = useRef(null); // Track previous page number
@@ -676,7 +677,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											return (
 												<div
 													key={chunk.id}
-													className="absolute border border-blue-500 bg-transparent"
+													className="absolute border border-blue-500 bg-blue-500/10 hover:bg-blue-500/20 cursor-pointer pointer-events-auto transition-all"
 													style={{
 														left: `${
 															chunk.x_min * scale
@@ -691,6 +692,22 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
+													onClick={async (e) => {
+														e.stopPropagation();
+														setAiModal({ open: true, loading: true, data: null, error: null });
+														try {
+															const { createClient } = await import("@/lib/supabase/client");
+															const supabase = createClient();
+															const { data, error } = await supabase.functions.invoke("chunk-explain", {
+																body: { chunk_id: chunk.id, detail_level: "detailed", context_radius: 2 }
+															});
+															if (error) throw error;
+															setAiModal({ open: true, loading: false, data, error: null });
+														} catch (error) {
+															setAiModal({ open: true, loading: false, data: null, error: error.message });
+														}
+													}}
+													title="Click for AI explanation"
 												/>
 											);
 										}
@@ -777,6 +794,32 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 					</Card>
 				</div>
 			)} */}
+
+			{/* AI Explanation Modal */}
+			{aiModal.open && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setAiModal({ ...aiModal, open: false })}>
+					<div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+						<div className="sticky top-0 bg-white dark:bg-gray-800 border-b px-6 py-4 flex justify-between items-center">
+							<h2 className="text-lg font-semibold">AI Explanation</h2>
+							<button onClick={() => setAiModal({ ...aiModal, open: false })} className="text-gray-500 hover:text-gray-700">✕</button>
+						</div>
+						<div className="px-6 py-4">
+							{aiModal.loading && <div className="text-center py-8">Loading explanation...</div>}
+							{aiModal.error && <div className="text-red-600">Error: {aiModal.error}</div>}
+							{aiModal.data && (
+								<div className="space-y-4">
+									<div className="text-sm text-gray-600">
+										<span className="font-medium">{aiModal.data.course_code}</span> • {aiModal.data.document_name}
+									</div>
+									<div className="prose max-w-none">
+										<p className="whitespace-pre-wrap">{aiModal.data.explanation}</p>
+									</div>
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };
