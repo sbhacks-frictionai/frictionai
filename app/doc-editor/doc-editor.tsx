@@ -10,50 +10,50 @@ import { CommentSection } from "./comment-section";
 import { getDocumentService } from "@/app/supabase-service/document-service";
 
 export function DocEditor() {
-  const searchParams = useSearchParams();
-  const className = searchParams.get("file_name") || "Document";
-  const documentService = getDocumentService();
-  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
-  
-  useEffect(() => {
-    const fetchPdfBlob = async () => {
-      const documentId = searchParams.get("id");
-      if (documentId) {
-        try {
-          const blob = await documentService.getFileBlob(documentId);
-          setPdfBlob(blob);
-        } catch (error) {
-          console.error("Error fetching PDF blob:", error);
-        }
-      }
-    };
-    fetchPdfBlob();
-  }, []);
+	const searchParams = useSearchParams();
+	const className = searchParams.get("file_name") || "Document";
+	const documentService = getDocumentService();
+	const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
 
-  return (
-    <div className="flex-1 w-full flex flex-col gap-8">
-      {/* Main Content */}
-      <div className="flex-1 w-full max-w-7xl mx-auto p-5 space-y-6">
-        {/* Class/Document Title */}
-        <div className="mb-4">
-          <h1 className="text-3xl font-bold">{className}</h1>
-        </div>
+	useEffect(() => {
+		const fetchPdfBlob = async () => {
+			const documentId = searchParams.get("id");
+			if (documentId) {
+				try {
+					const blob = await documentService.getFileBlob(documentId);
+					setPdfBlob(blob);
+				} catch (error) {
+					console.error("Error fetching PDF blob:", error);
+				}
+			}
+		};
+		fetchPdfBlob();
+	}, []);
 
-        {/* PDF Editor Area */}
-        <PdfViewer file={pdfBlob} />
+	return (
+		<div className="flex-1 w-full flex flex-col gap-8">
+			{/* Main Content */}
+			<div className="flex-1 w-full max-w-7xl mx-auto p-5 space-y-6">
+				{/* Class/Document Title */}
+				<div className="mb-4">
+					<h1 className="text-3xl font-bold">{className}</h1>
+				</div>
 
-        {/* AI Summary Area */}
-        <AiSummary />
+				{/* PDF Editor Area */}
+				<PdfViewer file={pdfBlob} />
 
-        {/* Struggle Map Area */}
-        {/* <StruggleMap /> */}
+				{/* AI Summary Area */}
+				<AiSummary />
 
-        {/* Comment Section */}
-        <CommentSection />
-      </div>
+				{/* Struggle Map Area */}
+				{/* <StruggleMap /> */}
 
-      {/* Footer */}
-      <Footer />
-    </div>
-  );
+				{/* Comment Section */}
+				{/* <CommentSection /> */}
+			</div>
+
+			{/* Footer */}
+			<Footer />
+		</div>
+	);
 }
