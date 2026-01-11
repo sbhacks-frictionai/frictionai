@@ -29,7 +29,7 @@ export function ClassDocs() {
   const [fileName, setFileName] = useState("");
   const [topic, setTopic] = useState("");
   const [documentList, setDocumentList] = useState<Document[]>([]);
-
+  const documentService = getDocumentService();
   // Helper function to remove file extension
   const removeFileExtension = (fileName: string): string => {
     const lastDotIndex = fileName.lastIndexOf('.');
@@ -83,26 +83,12 @@ export function ClassDocs() {
     
     // Handle file upload
     setUploading(true);
-    console.log("Uploading file:", {
-      file: selectedFile.name,
-      fileName: fileName.trim(),
-      topic: topic.trim(),
+    
+    documentService.createDocument(fileName.trim(),selectedFile, courseId, topic.trim()).then((docData)=> {
+      console.log(docData);
+      setUploading(false);
     });
     
-    // TODO: Implement actual file upload logic here
-    // For now, just simulate upload
-    setTimeout(() => {
-      setUploading(false);
-      alert(`File "${fileName.trim()}" uploaded successfully to "${topic.trim()}"!`);
-      
-      // Reset everything
-      setSelectedFile(null);
-      setFileName("");
-      setTopic("");
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }, 1000);
   };
 
   const handleFormCancel = () => {

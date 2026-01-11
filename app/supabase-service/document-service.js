@@ -3,6 +3,18 @@ import {createClient} from "@/lib/supabase/client";
 export const getDocumentService = () => {
   const supabase = createClient();
 
+  const uploadDocument = async (filename, file) => {
+    const { data, error } = await supabase
+      .storage
+      .from('documents')
+      .upload(filename, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+      if (error) throw error;
+      return data;
+  };
+
   return {
     getAllDocumentByCourseId: async (courseId) => {
       const { data, error } = await supabase.from("documents").select("*").eq("course_id", courseId);
@@ -13,7 +25,26 @@ export const getDocumentService = () => {
       const { data, error } = await supabase.from("documents").select("path").eq("id", documentId);
       if (error) throw error;
       return data[0].path;
-    }
+    },
+    uploadDocument,
+    createDocument: async (filename, file, courseId, topic) => {
+      if (!filename || !file || !courseId || !topic) return null;
+      const data = await uploadDocument(filename, file);
+      const path = data.path;
+      const { docData, error} = await supabase.from("documents").insert(
+        {
+          course_id: courseId,
+          bucket_path: path,
+          file_name: filename,
+          topic: topic == "" ? "General" : topic
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return docData;
+    },
+
+
   };
 };
 
