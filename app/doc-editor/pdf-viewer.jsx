@@ -15,6 +15,7 @@ const PdfViewer = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState(null);
   const [currentHighlight, setCurrentHighlight] = useState(null);
+  const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
   const pageViewStartTime = useRef(null);
@@ -52,6 +53,8 @@ const PdfViewer = () => {
     // Start tracking time for current page
     pageViewStartTime.current = Date.now();
     setCurrentPageViewTime(0); // Reset display time
+    // Close dialog bubble when page changes
+    setSelectedHighlight(null);
     // console.log(`Started viewing page ${pageNumber}`);
 
     // Update displayed time every second
@@ -96,7 +99,16 @@ const PdfViewer = () => {
   // Keyboard navigation for page flipping
   useEffect(() => {
     const handleKeyPress = (e) => {
-      if (!file || mode !== 'view') return;
+      if (!file) return;
+      
+      // Close dialog bubble on Escape key (works in any mode)
+      if (e.key === 'Escape') {
+        setSelectedHighlight(null);
+        return;
+      }
+      
+      // Page navigation only works in view mode
+      if (mode !== 'view') return;
       
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -345,7 +357,13 @@ const PdfViewer = () => {
             >
               <div
                 className="relative shadow-lg bg-background border border-border"
-                onClick={(e) => handlePageClick(e, pageNumber - 1)}
+                onClick={(e) => {
+                  // Close dialog bubble if clicking outside of it
+                  if (selectedHighlight && e.target === e.currentTarget) {
+                    setSelectedHighlight(null);
+                  }
+                  handlePageClick(e, pageNumber - 1);
+                }}
                 onMouseDown={(e) => handleMouseDown(e, pageNumber - 1)}
                 onMouseMove={(e) => handleMouseMove(e, pageNumber - 1)}
                 onMouseUp={(e) => handleMouseUp(e, pageNumber - 1)}
@@ -361,8 +379,8 @@ const PdfViewer = () => {
                 <div
                   className="absolute top-0 left-0 w-full h-full z-10"
                   style={{
-                    pointerEvents: mode === 'view' ? 'none' : 'auto',
-                    cursor: mode === 'text' ? 'crosshair' : mode === 'highlight' ? 'crosshair' : 'default',
+                    pointerEvents: mode === 'view' ? 'auto' : 'auto',
+                    cursor: mode === 'text' ? 'crosshair' : mode === 'highlight' ? 'crosshair' : 'pointer',
                   }}
                 >
                   {getAnnotationsForPage(pageNumber).map((annotation) => {
@@ -404,8 +422,21 @@ const PdfViewer = () => {
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('Delete this highlight?')) {
-                              deleteAnnotation(annotation.id);
+                            if (mode === 'view') {
+                              // Show dialog bubble next to the highlight
+                              setSelectedHighlight({
+                                id: annotation.id,
+                                x: annotation.x + annotation.width,
+                                y: annotation.y,
+                                width: annotation.width,
+                                height: annotation.height,
+                                page: annotation.page,
+                              });
+                            } else {
+                              // In other modes, show delete confirmation
+                              if (confirm('Delete this highlight?')) {
+                                deleteAnnotation(annotation.id);
+                              }
                             }
                           }}
                         />
@@ -427,6 +458,35 @@ const PdfViewer = () => {
                         transformOrigin: 'top left',
                       }}
                     />
+                  )}
+
+                  {/* Dialog bubble for selected highlight */}
+                  {selectedHighlight && selectedHighlight.page === pageNumber && (
+                    <div
+                      className="absolute z-[20] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-[200px] max-w-[300px]"
+                      style={{
+                        left: `${selectedHighlight.x * scale + 10}px`,
+                        top: `${selectedHighlight.y * scale}px`,
+                        transform: `scale(${scale})`,
+                        transformOrigin: 'top left',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Highlight Options
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSelectedHighlight(null)}
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none ml-2"
+                          aria-label="Close"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
