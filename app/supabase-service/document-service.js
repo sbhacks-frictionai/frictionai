@@ -4,7 +4,7 @@ export const getDocumentService = () => {
   const supabase = createClient();
 
   return {
-    getALlDocumentByCourseId: async (courseId) => {
+    getAllDocumentByCourseId: async (courseId) => {
       const { data, error } = await supabase.from("documents").select("*").eq("course_id", courseId);
       if (error) throw error;
       return data;

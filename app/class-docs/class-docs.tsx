@@ -3,54 +3,52 @@
 import { Footer } from "@/components/footer";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getDocumentService } from "@/app/supabase-service/document-service";
 
-// Fake course data for preview/testing
-const courseData = [
-  {
-    topic: "Topic 1: Intro to C++",
-    documents: [
-      {
-        name: "Syllabus.pdf",
-      },
-      {
-        name: "Lecture 1 Slides.pptx",
-      },
-      {
-        name: "Intro Reading.docx",
-      },
-    ],
-  },
-  {
-    topic: "Topic 2: Pointers",
-    documents: [
-      {
-        name: "Lecture 2 Notes.pdf",
-      },
-      {
-        name: "Pointer Exercises.docx",
-      },
-      {
-        name: "Sample Code.cpp",
-      },
-    ],
-  },
-];
-
-
+interface Document {
+  id: string;
+  course_id: string;
+  bucket_path: string;
+  file_name: string;
+  total_clicks: number;
+  topic: string;
+}
 
 export function ClassDocs() {
   const searchParams = useSearchParams();
   const className = searchParams.get("class") || "Class";
+  const courseId = searchParams.get("course_id") || "";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [topic, setTopic] = useState("");
+  const [documentList, setDocumentList] = useState<Document[]>([]);
+
+  // Helper function to remove file extension
+  const removeFileExtension = (fileName: string): string => {
+    const lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex === -1 || fileName[0] == '.') return fileName;
+    return fileName.substring(0, lastDotIndex);
+  };
+
+  // Group documents by topic and filter out placeholder entries
+  const groupedDocuments = documentList
+    .reduce((acc, doc) => {
+      const topic = doc.topic || "General";
+      if (!acc[topic]) {
+        acc[topic] = [];
+      }
+      acc[topic].push(doc);
+      return acc;
+    }, {} as Record<string, Document[]>);
+
+  const topics = Object.keys(groupedDocuments);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -116,6 +114,19 @@ export function ClassDocs() {
       fileInputRef.current.value = "";
     }
   };
+
+  useEffect(() => {
+      if (!courseId) {
+        return;
+      }
+
+      const fetchDocuments = async () => {
+        const documents = await getDocumentService().getAllDocumentByCourseId(courseId);
+        console.log(documents);
+        setDocumentList(documents);
+      };
+      fetchDocuments();
+    }, [courseId]);
 
   return (
     <div className="flex-1 w-full flex flex-col gap-8">
@@ -203,36 +214,44 @@ export function ClassDocs() {
 
         {/* Topics & Documents */}
         <div className="space-y-8">
-          {courseData.map((topic) => (
-            <section key={topic.topic}>
-              <h2 className="text-2xl font-semibold mb-4 text-foreground">
-                {topic.topic}
-              </h2>
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-                {topic.documents.map((doc) => (
-                  <Link
-                    key={doc.name}
-                    href={`/doc-editor?doc=${encodeURIComponent(doc.name)}`}
-                    className="bg-card rounded-lg border border-border shadow-sm transition-transform flex items-center gap-4
-                               p-4 cursor-pointer hover:-translate-y-1 hover:shadow-md"
-                  >
-                    <div className="p-2 bg-muted rounded-lg flex items-center justify-center">
-                      <span
-                        className="text-xl"
-                        role="img"
-                        aria-label="document"
-                      >
-                        📄
+          {topics.length > 0 ? (
+            topics.map((topic) => (
+              <section key={topic}>
+                <h2 className="text-2xl font-semibold mb-4 text-foreground">
+                  {topic}
+                </h2>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+                  {groupedDocuments[topic].map((doc) => (
+                    <Link
+                      key={doc.id}
+                      href={`/doc-editor?id=${encodeURIComponent(doc.id)}&file_name=${encodeURIComponent(doc.file_name)}`}
+                      className="bg-card rounded-lg border border-border shadow-sm transition-transform flex items-center gap-4
+                                 p-4 cursor-pointer hover:-translate-y-1 hover:shadow-md"
+                    >
+                      <div className="p-2 bg-muted rounded-lg flex items-center justify-center">
+                        <span
+                          className="text-xl"
+                          role="img"
+                          aria-label="document"
+                        >
+                          📄
+                        </span>
+                      </div>
+                      <span className="font-medium text-sm text-foreground">
+                        {removeFileExtension(doc.file_name)}
                       </span>
-                    </div>
-                    <span className="font-medium text-sm text-foreground">
-                      {doc.name}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ))
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">
+                No documents found. Upload a PDF to get started!
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
