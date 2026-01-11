@@ -23,6 +23,8 @@ interface CourseInfo {
 interface ChunkExplainResponse {
 	success: boolean;
 	explanation?: string;
+	chunk_type?: "text" | "image";
+	is_image?: boolean;
 	related_chunks?: string[];
 	page_number?: number;
 	course_context?: string;
@@ -75,6 +77,27 @@ Focus on:
 4. What should the student pay attention to for understanding this topic?
 
 Provide your explanation in a clear, educational tone appropriate for this course level.
+`;
+
+const IMAGE_PROMPT_TEMPLATE = `
+Course: {{course_code}} - {{course_name}}
+Document: {{document_name}}
+Page: {{page_number}}
+
+The student clicked on an IMAGE/DIAGRAM in the lecture materials for more explanation. Below is the visual content description along with surrounding context.
+
+{{full_context}}
+
+Task: {{detail_instruction}}
+
+Focus on:
+1. What does this visual represent in the context of {{course_code}}?
+2. What are the key elements or components shown?
+3. How does this visual aid understanding of the course concepts?
+4. What connections exist between this visual and the surrounding text?
+5. What should students pay special attention to in this diagram/image?
+
+Provide your explanation in a clear, educational tone. Start with "🖼️ Image Analysis" or "📊 Diagram Explanation" to indicate this is visual content.
 `;
 
 // Detail level instructions
@@ -151,6 +174,8 @@ Deno.serve(async (req) => {
 				document_id,
 				page_number,
 				content,
+				summary,
+				is_image,
 				chunk_index,
 				interactions,
 				documents!inner(
@@ -186,7 +211,14 @@ Deno.serve(async (req) => {
 			"Course";
 		const documentName = targetChunk.documents.file_name || "document";
 
-		console.log(`Explaining for: ${courseCode} - ${courseInfo.title}`);
+		// Detect chunk type
+		const isImage = targetChunk.is_image === true;
+		const chunkType: "text" | "image" = isImage ? "image" : "text";
+		const chunkContent = isImage
+			? (targetChunk.summary || "[Image with no description available]")
+			: (targetChunk.content || "");
+
+		console.log(`Explaining ${chunkType} chunk for: ${courseCode} - ${courseInfo.title}`);
 
 		// Check cache first
 		const { data: cachedExplanation } = await supabase
@@ -230,7 +262,9 @@ Deno.serve(async (req) => {
 				JSON.stringify({
 					success: true,
 					explanation: cachedExplanation.explanation,
-					chunk_content: targetChunk.content,
+					chunk_type: chunkType,
+					is_image: isImage,
+					chunk_content: chunkContent,
 					related_chunks: contextChunks
 						?.map((c) => c.id)
 						.filter((id) => id !== chunk_id) || [],
@@ -248,7 +282,7 @@ Deno.serve(async (req) => {
 		// Fetch surrounding chunks for context
 		const { data: contextChunks } = await supabase
 			.from("chunks")
-			.select("id, content, chunk_index, page_number")
+			.select("id, content, summary, is_image, chunk_index, page_number")
 			.eq("document_id", targetChunk.document_id)
 			.gte("page_number", Math.max(1, targetChunk.page_number - 1))
 			.lte("page_number", targetChunk.page_number + 1)
@@ -268,10 +302,18 @@ Deno.serve(async (req) => {
 		const fullContext = relevantChunks
 			.map((chunk) => {
 				const isTarget = chunk.id === chunk_id;
+				const isChunkImage = chunk.is_image === true;
+				const chunkContentText = isChunkImage
+					? (chunk.summary || "[Image with no description]")
+					: (chunk.content || "");
+				
 				if (isTarget) {
-					return `>>> SELECTED CHUNK (Page ${chunk.page_number}) >>>\n${chunk.content}\n<<< END SELECTED CHUNK <<<`;
+					const marker = isImage ? "IMAGE/DIAGRAM" : "TEXT";
+					return `>>> SELECTED ${marker} (Page ${chunk.page_number}) >>>\n${chunkContentText}\n<<< END SELECTED ${marker} <<<`;
 				}
-				return `Context (Page ${chunk.page_number}):\n${chunk.content}`;
+				
+				const contextLabel = isChunkImage ? "Context - Image" : "Context";
+				return `${contextLabel} (Page ${chunk.page_number}):\n${chunkContentText}`;
 			})
 			.join("\n\n---\n\n");
 
@@ -280,10 +322,13 @@ Deno.serve(async (req) => {
 
 		if (!geminiApiKey) {
 			// Fallback without AI
+			const fallbackPrefix = isImage ? "🖼️ Image content:\n\n" : "Selected content:\n\n";
 			return new Response(
 				JSON.stringify({
 					success: true,
-					explanation: `Selected content from ${documentName}:\n\n${targetChunk.content}\n\nPage ${targetChunk.page_number}\n\nCourse: ${courseCode} - ${courseInfo.title}`,
+					explanation: `${fallbackPrefix}${chunkContent}\n\nFrom: ${documentName} (Page ${targetChunk.page_number})\nCourse: ${courseCode} - ${courseInfo.title}`,
+					chunk_type: chunkType,
+					is_image: isImage,
 					related_chunks: relevantChunks
 						.map((c) => c.id)
 						.filter((id) => id !== chunk_id),
@@ -301,6 +346,7 @@ Deno.serve(async (req) => {
 			targetChunk.page_number,
 			fullContext,
 			detail_level,
+			chunkType,
 			geminiApiKey
 		);
 
@@ -341,7 +387,9 @@ Deno.serve(async (req) => {
 			JSON.stringify({
 				success: true,
 				explanation,
-				chunk_content: targetChunk.content,
+				chunk_type: chunkType,
+				is_image: isImage,
+				chunk_content: chunkContent,
 				related_chunks: relevantChunks
 					.map((c) => c.id)
 					.filter((id) => id !== chunk_id),
@@ -376,6 +424,7 @@ async function generateExplanation(
 	pageNumber: number,
 	fullContext: string,
 	detailLevel: string,
+	chunkType: "text" | "image",
 	apiKey: string
 ): Promise<string> {
 	const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -386,7 +435,12 @@ async function generateExplanation(
 		course_name: courseName,
 	});
 
-	const userPrompt = fillTemplate(USER_PROMPT_TEMPLATE, {
+	// Choose appropriate user prompt template based on chunk type
+	const userPromptTemplate = chunkType === "image" 
+		? IMAGE_PROMPT_TEMPLATE 
+		: USER_PROMPT_TEMPLATE;
+
+	const userPrompt = fillTemplate(userPromptTemplate, {
 		course_code: courseCode,
 		course_name: courseName,
 		document_name: documentName,
@@ -400,7 +454,7 @@ async function generateExplanation(
 
 	const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
 
-	console.log(`Calling Gemini for ${courseCode}`);
+	console.log(`Calling Gemini for ${courseCode} (${chunkType} chunk)`);
 
 	try {
 		const response = await fetch(geminiUrl, {
