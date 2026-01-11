@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
 import { getInteractionService } from "@/app/supabase-service/interaction-service";
 import { useSearchParams } from "next/navigation";
-
+import { getDocumentService } from "@/app/supabase-service/document-service";
 // Set up PDF.js worker - use unpkg CDN which has all versions
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -29,6 +29,10 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
 	const [interactions, setInteractions] = useState([]); // Array of interactions from database
 	const containerRef = useRef(null);
+	const pageViewStartTime = useRef(null); // Track when current page view started
+	const previousPageNumber = useRef(null); // Track previous page number
+  const pageViewTimes = useRef({}); // Store accumulated time spent on each page (in milliseconds)
+  const [docService, setDocService] = useState(null);
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -38,10 +42,80 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
 
-	// Close dialog bubble when page changes
+  useEffect(() => {
+    const docService = getDocumentService();
+    setDocService(docService);
+  }, []);
+
+	// Track time spent on each page
 	useEffect(() => {
+		if (!file || !numPages) return;
+
+		// Record end time for previous page if it exists
+		if (
+			pageViewStartTime.current !== null &&
+			previousPageNumber.current !== null
+		) {
+			const prevPage = previousPageNumber.current;
+			const endTime = Date.now();
+			const duration = endTime - pageViewStartTime.current;
+
+			// Add to accumulated time for previous page
+			if (!pageViewTimes.current[prevPage]) {
+				pageViewTimes.current[prevPage] = 0;
+			}
+			pageViewTimes.current[prevPage] += duration;
+      const viewTime = (duration / 1000).toFixed(2);
+      if (viewTime > 1) {
+			  getDocumentService().incrementPageViewTime(documentId, prevPage, viewTime);
+      }
+		
+		}
+
+		// Start tracking time for current page
+		pageViewStartTime.current = Date.now();
+		previousPageNumber.current = pageNumber;
+		// Close dialog bubble when page changes
 		setSelectedHighlight(null);
-	}, [pageNumber]);
+
+		// Cleanup: record time when component unmounts or file changes
+		return () => {
+			if (
+				pageViewStartTime.current !== null &&
+				previousPageNumber.current !== null
+			) {
+				const endTime = Date.now();
+				const duration = endTime - pageViewStartTime.current;
+				const currentPage = previousPageNumber.current;
+
+				if (!pageViewTimes.current[currentPage]) {
+					pageViewTimes.current[currentPage] = 0;
+				}
+				pageViewTimes.current[currentPage] += duration;
+
+				console.log(
+					`Final time on page ${currentPage}: ${(
+						pageViewTimes.current[currentPage] / 1000
+					).toFixed(2)} seconds`
+				);
+			}
+		};
+	}, [pageNumber, file, numPages]);
+
+	// Log summary when file changes or component unmounts
+	useEffect(() => {
+		return () => {
+			if (Object.keys(pageViewTimes.current).length > 0) {
+				console.log("=== Page View Time Summary ===");
+				Object.entries(pageViewTimes.current).forEach(([page, totalTime]) => {
+					console.log(
+						`Page ${page}: ${(totalTime / 1000).toFixed(2)} seconds`
+					);
+				});
+				console.log("==============================");
+			}
+		};
+	}, [file]);
 
 	// Keyboard navigation for page flipping
 	useEffect(() => {
@@ -132,6 +206,10 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setNumPages(numPages);
 		setPageNumber(1);
 		setAnnotations([]);
+		// Reset page view times when new document loads
+		pageViewTimes.current = {};
+		pageViewStartTime.current = Date.now();
+		previousPageNumber.current = 1;
 	};
 
 	const handlePageClick = (e, pageIndex) => {

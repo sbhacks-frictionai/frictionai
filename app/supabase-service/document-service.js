@@ -71,5 +71,37 @@ export const getDocumentService = () => {
 			if (error) throw error;
 			return data; // Return just the blob without triggering download
 		},
+		incrementPageViewTime: async (documentId, pageNumber, time) => {
+			const { data, error } = await supabase.rpc("increment_page_time", {
+				doc_id: documentId,
+				page_num: pageNumber,
+				time_delta: time,
+			  });
+			
+			  if (error) {
+				console.error("RPC error:", error);
+			  }
+			
+			  if (data !== null) {
+				// row existed, increment done
+				return data;
+			  }
+			
+			  // row does not exist, insert it
+			  const { data: insertData, error: insertError } = await supabase
+				.from("page_time")
+				.insert([
+				  { document_id: documentId, page: pageNumber, time_spent: time },
+				])
+				.select("time_spent")
+				.single();
+			
+			  if (insertError) {
+				console.error("Insert error:", insertError);
+				return null;
+			  }
+			
+			  return insertData.time_spent;
+		},
 	};
 };
