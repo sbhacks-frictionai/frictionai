@@ -230,7 +230,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			// console.log(clickedChunk.id);
 			// chunk clicked
 			const chunkService = getChunkService();
-			
+
 			// Optimistically update local state immediately for real-time feedback
 			setChunks((prevChunks) =>
 				prevChunks.map((chunk) =>
@@ -238,7 +238,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						? {
 								...chunk,
 								interactions: (chunk.interactions || 0) + 1,
-							}
+						  }
 						: chunk
 				)
 			);
@@ -283,13 +283,14 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											0,
 											(chunk.interactions || 1) - 1
 										),
-									}
+								  }
 								: chunk
 						)
 					);
 					setInteractions((prevInteractions) =>
 						prevInteractions.filter(
-							(interaction) => interaction.id !== newInteraction.id
+							(interaction) =>
+								interaction.id !== newInteraction.id
 						)
 					);
 				});
@@ -497,26 +498,45 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			const maxCount = Math.max(...clusters.map((c) => c.count), 1);
 			const minCount = Math.min(...clusters.map((c) => c.count), 1);
 
+			// Color gradient configuration - easily tweakable
+			const COLOR_LOW = { r: 34, g: 255, b: 94 }; // Green (low density)
+			const COLOR_MID = { r: 175, g: 175, b: 8 }; // Yellow (medium density)
+			const COLOR_HIGH = { r: 255, g: 38, b: 68 }; // Red (high density)
+			const DENSITY_MIDPOINT = 0.5; // Point where gradient switches from low->mid to mid->high
+			const DENSITY_CURVE = 0.7; // Logarithmic curve exponent for density distribution
+
 			return clusters.map((cluster) => {
 				// Normalize density (0 to 1) - use logarithmic scale for better visualization
 				const rawDensity = cluster.count / maxCount;
-				const density = Math.pow(rawDensity, 0.7); // Slight curve for better visual distribution
+				const density = Math.pow(rawDensity, DENSITY_CURVE);
 
 				// Interpolate color from green (low) -> yellow (medium) -> red (high)
-				// Green: rgb(34, 197, 94) - Yellow: rgb(234, 179, 8) - Red: rgb(239, 68, 68)
 				let red, green, blue;
-				if (density < 0.5) {
+				if (density < DENSITY_MIDPOINT) {
 					// Interpolate between green and yellow
-					const t = density * 2; // Scale to 0-1 for this segment
-					red = Math.round(34 + (234 - 34) * t);
-					green = Math.round(197 - (197 - 179) * t);
-					blue = Math.round(94 - (94 - 8) * t);
+					const t = density / DENSITY_MIDPOINT; // Scale to 0-1 for this segment
+					red = Math.round(
+						COLOR_LOW.r + (COLOR_MID.r - COLOR_LOW.r) * t
+					);
+					green = Math.round(
+						COLOR_LOW.g + (COLOR_MID.g - COLOR_LOW.g) * t
+					);
+					blue = Math.round(
+						COLOR_LOW.b + (COLOR_MID.b - COLOR_LOW.b) * t
+					);
 				} else {
 					// Interpolate between yellow and red
-					const t = (density - 0.5) * 2; // Scale to 0-1 for this segment
-					red = Math.round(234 + (239 - 234) * t);
-					green = Math.round(179 - (179 - 68) * t);
-					blue = Math.round(8 - (8 - 68) * t);
+					const t =
+						(density - DENSITY_MIDPOINT) / (1 - DENSITY_MIDPOINT); // Scale to 0-1 for this segment
+					red = Math.round(
+						COLOR_MID.r + (COLOR_HIGH.r - COLOR_MID.r) * t
+					);
+					green = Math.round(
+						COLOR_MID.g + (COLOR_HIGH.g - COLOR_MID.g) * t
+					);
+					blue = Math.round(
+						COLOR_MID.b + (COLOR_HIGH.b - COLOR_MID.b) * t
+					);
 				}
 
 				// Blob size scales with count (min 25px, max 80px)
@@ -565,7 +585,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	}, [pageNumber, chunks]);
 
 	return (
-		<div className="flex flex-col min-h-screen h-[130vh] w-full bg-muted">
+		<div className="flex flex-col min-h-screen h-[110vh] w-full bg-muted">
 			<div className="flex items-center gap-4 p-4 bg-background border-b border-border flex-wrap shadow-sm">
 				{file && (
 					<>
@@ -676,7 +696,8 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											return (
 												<div
 													key={chunk.id}
-													className="absolute border border-blue-500 bg-transparent"
+													// ADD BORDERS HERE FOR TESTING
+													className="absolute bg-transparent"
 													style={{
 														left: `${
 															chunk.x_min * scale
@@ -707,7 +728,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											return (
 												<div
 													key={`blob-${index}-${blob.centerX}-${blob.centerY}`}
-													className="absolute rounded-full blur-[2px]"
+													className="absolute rounded-full blur-[1px]"
 													style={{
 														left: `${
 															blob.centerX * scale

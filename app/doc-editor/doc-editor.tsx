@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import PdfViewer from "./pdf-viewer";
 import { AiSummary } from "./ai-summary";
-import { StruggleMap } from "./struggle-map";
-import { CommentSection } from "./comment-section";
+// import { StruggleMap } from "./struggle-map";
+// import { CommentSection } from "./comment-section";
 import { getDocumentService } from "@/app/supabase-service/document-service";
 
 export function DocEditor() {
