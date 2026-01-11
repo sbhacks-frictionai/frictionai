@@ -48,12 +48,13 @@ Deno.serve(async (req) => {
 		// In Supabase edge functions, SUPABASE_URL and SUPABASE_ANON_KEY are automatically available
 		// SUPABASE_SERVICE_ROLE_KEY needs to be set as a secret for bypassing RLS
 		const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+		const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 		const supabaseServiceKey =
 			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
 			Deno.env.get("SUPABASE_ANON_KEY") ??
 			"";
-
-		if (!supabaseUrl || !supabaseServiceKey) {
+		console.log("auth key prefix", supabaseServiceKey.slice(0, 10));
+		if (!supabaseUrl || !supabaseServiceKey || !anonKey) {
 			console.error("Missing Supabase environment variables", {
 				hasUrl: !!supabaseUrl,
 				hasServiceKey: !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
@@ -89,6 +90,8 @@ Deno.serve(async (req) => {
 
 		console.log("Document created:", documentData);
 
+		const userAuth = req.headers.get("Authorization")!;
+
 		// Step 1: Call chunk-process function to process PDF into chunks
 		console.log("Calling chunk-process function...");
 		const chunkProcessUrl = `${supabaseUrl}/functions/v1/chunk-process`;
@@ -96,7 +99,8 @@ Deno.serve(async (req) => {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${supabaseServiceKey}`,
+				Authorization: userAuth,
+				apikey: anonKey,
 			},
 			body: JSON.stringify({
 				document_id: documentData.id,
@@ -112,63 +116,58 @@ Deno.serve(async (req) => {
 		}
 
 		const chunkProcessResult = await chunkProcessResponse.json();
-		console.log("Chunk process result:", chunkProcessResult);
 
-		if (!chunkProcessResult.success) {
-			throw new Error(
-				`chunk-process failed: ${
-					chunkProcessResult.error || "Unknown error"
-				}`
-			);
-		}
-
-		// Step 2: Call chunk-summary function to generate summaries for the chunks
-		const chunkIds =
-			chunkProcessResult.chunks?.map((chunk: any) => chunk.id) || [];
-
-		if (chunkIds.length > 0) {
-			console.log("Calling chunk-summary function...");
-			const chunkSummaryUrl = `${supabaseUrl}/functions/v1/chunk-summary`;
-			const chunkSummaryResponse = await fetch(chunkSummaryUrl, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${supabaseServiceKey}`,
-				},
-				body: JSON.stringify({
-					chunk_ids: chunkIds,
-					document_id: documentData.id,
-				}),
-			});
-
-			if (!chunkSummaryResponse.ok) {
-				const errorText = await chunkSummaryResponse.text();
-				console.error("Error calling chunk-summary:", errorText);
-				// Don't throw - chunk processing succeeded, summary is optional
-				console.warn("Chunk summary failed, but chunks were created");
-			} else {
-				const chunkSummaryResult = await chunkSummaryResponse.json();
-				console.log("Chunk summary result:", chunkSummaryResult);
-			}
-		}
-
-		// Return success response with document info and processing results
-		const data = {
-			success: true,
-			message: `Processing PDF: ${name} from bucket: ${bucket_id}`,
-			file_id: id,
-			bucket_id,
-			file_name: name,
+		const rows = chunkProcessResult.chunks.map((c: any) => ({
 			document_id: documentData.id,
-			document: documentData,
-			chunk_processing: chunkProcessResult,
-			metadata,
-		};
+			page_number: c.page_number,
+			content: c.content,
+			x_min: c.x_min,
+			x_max: c.x_max,
+			y_min: c.y_min,
+			y_max: c.y_max,
+			chunk_index: c.chunk_index,
+			is_image: !!c.is_image,
+		}));
 
-		return new Response(JSON.stringify(data), {
-			headers: { "Content-Type": "application/json" },
-			status: 200,
-		});
+		const batchSize = 200; // 100–500 is typical; 200 is a safe default
+		let inserted = 0;
+
+		for (let i = 0; i < rows.length; i += batchSize) {
+			const batch = rows.slice(i, i + batchSize);
+
+			const { error: insertError } = await supabase
+				.from("chunks")
+				.insert(batch);
+
+			if (insertError) {
+				return new Response(
+					JSON.stringify({
+						success: false,
+						error: "Failed inserting chunks",
+						details: insertError.message,
+						failed_batch_start: i,
+						failed_batch_size: batch.length,
+					}),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+
+			inserted += batch.length;
+		}
+		return new Response(
+			JSON.stringify({
+				success: true,
+				document_id: chunkProcessResult.document_id,
+				file_name: chunkProcessResult.file_name,
+				pages_processed: chunkProcessResult.pages_processed,
+				chunks_created: rows.length,
+				chunks_inserted: inserted,
+			}),
+			{ status: 200, headers: { "Content-Type": "application/json" } }
+		);
 	} catch (error) {
 		console.error("Error processing PDF:", error);
 

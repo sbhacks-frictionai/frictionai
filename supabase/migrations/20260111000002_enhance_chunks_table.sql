@@ -12,7 +12,8 @@ ADD COLUMN IF NOT EXISTS "y_min" double precision,
 ADD COLUMN IF NOT EXISTS "y_max" double precision,
 ADD COLUMN IF NOT EXISTS "page_width" double precision,
 ADD COLUMN IF NOT EXISTS "page_height" double precision,
-ADD COLUMN IF NOT EXISTS "chunk_index" integer; -- Order of chunk on the page
+ADD COLUMN IF NOT EXISTS "chunk_index" integer,
+ADD COLUMN IF NOT EXISTS "is_image" boolean DEFAULT false;
 
 -- Add embedding column (using text array as fallback if vector extension unavailable)
 DO $$
