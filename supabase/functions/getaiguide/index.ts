@@ -37,7 +37,20 @@ interface GetAIGuideResponse {
 	error?: string;
 }
 
+// CORS headers helper
+const corsHeaders = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Headers":
+		"authorization, x-client-info, apikey, content-type",
+	"Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
+	// Handle CORS preflight requests
+	if (req.method === "OPTIONS") {
+		return new Response("ok", { headers: corsHeaders });
+	}
+
 	try {
 		// Parse request body
 		const { document_id }: GetAIGuideRequest = await req.json();
@@ -48,7 +61,13 @@ Deno.serve(async (req) => {
 					success: false,
 					error: "document_id is required",
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 400 }
+				{
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+					},
+					status: 400,
+				}
 			);
 		}
 
@@ -96,7 +115,13 @@ Deno.serve(async (req) => {
 						docError?.message || "Unknown error"
 					}`,
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 404 }
+				{
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+					},
+					status: 404,
+				}
 			);
 		}
 
@@ -121,7 +146,13 @@ Deno.serve(async (req) => {
 					success: false,
 					error: `Error fetching chunks: ${chunksError.message}`,
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 500 }
+				{
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+					},
+					status: 500,
+				}
 			);
 		}
 
@@ -131,7 +162,13 @@ Deno.serve(async (req) => {
 					success: false,
 					error: "No chunks found for this document",
 				}),
-				{ headers: { "Content-Type": "application/json" }, status: 404 }
+				{
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+					},
+					status: 404,
+				}
 			);
 		}
 
@@ -150,8 +187,8 @@ Deno.serve(async (req) => {
 		const timeByPage: Record<number, number> = {};
 		if (pageTimes) {
 			for (const pt of pageTimes) {
-				if (pt.page_number !== null && pt.total_time !== null) {
-					timeByPage[pt.page_number] = pt.total_time;
+				if (pt.page !== null && pt.time_spent !== null) {
+					timeByPage[pt.page] = pt.time_spent;
 				}
 			}
 		}
@@ -266,7 +303,13 @@ Generate the study guide now:`;
 					success: false,
 					error: "GEMINI_API_KEY not configured",
 				} as GetAIGuideResponse),
-				{ headers: { "Content-Type": "application/json" }, status: 500 }
+				{
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+					},
+					status: 500,
+				}
 			);
 		}
 
@@ -285,7 +328,12 @@ Generate the study guide now:`;
 				document_name: documentName,
 				total_chunks: chunks.length,
 			} as GetAIGuideResponse),
-			{ headers: { "Content-Type": "application/json" } }
+			{
+				headers: {
+					...corsHeaders,
+					"Content-Type": "application/json",
+				},
+			}
 		);
 	} catch (error) {
 		console.error("Error in getaiguide function:", error);
@@ -295,7 +343,10 @@ Generate the study guide now:`;
 				error: error instanceof Error ? error.message : "Unknown error",
 			} as GetAIGuideResponse),
 			{
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					...corsHeaders,
+					"Content-Type": "application/json",
+				},
 				status: 500,
 			}
 		);
