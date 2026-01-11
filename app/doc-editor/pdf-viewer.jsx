@@ -33,10 +33,10 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const containerRef = useRef(null);
 	const pageViewStartTime = useRef(null); // Track when current page view started
 	const previousPageNumber = useRef(null); // Track previous page number
-  const pageViewTimes = useRef({}); // Store accumulated time spent on each page (in milliseconds)
-  const [docService, setDocService] = useState(null);
-  const [chunkService, setChunkService] = useState(null);
-  const [top3Chunks, setTop3Chunks] = useState([]);
+	const pageViewTimes = useRef({}); // Store accumulated time spent on each page (in milliseconds)
+	const [docService, setDocService] = useState(null);
+	const [chunkService, setChunkService] = useState(null);
+	const [top3Chunks, setTop3Chunks] = useState([]);
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -46,21 +46,23 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
 
-  useEffect(() => {
-    const docService = getDocumentService();
-    setDocService(docService);
-    const chunkService = getChunkService();
-    setChunkService(chunkService);
-  }, []);
+	useEffect(() => {
+		const docService = getDocumentService();
+		setDocService(docService);
+		const chunkService = getChunkService();
+		setChunkService(chunkService);
+	}, []);
 
-  useEffect(() => {
-    if (chunkService) {
-      chunkService.getTop3ChunksByPage(documentId, pageNumber).then((data) => {
-        setTop3Chunks(data);
-        console.log("top3Chunks: ", data);
-      });
-    }
-  }, [chunkService, documentId, pageNumber]);
+	useEffect(() => {
+		if (chunkService) {
+			chunkService
+				.getTop3ChunksByPage(documentId, pageNumber)
+				.then((data) => {
+					setTop3Chunks(data);
+					console.log("top3Chunks: ", data);
+				});
+		}
+	}, [chunkService, documentId, pageNumber]);
 
 	// Track time spent on each page
 	useEffect(() => {
@@ -80,11 +82,14 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 				pageViewTimes.current[prevPage] = 0;
 			}
 			pageViewTimes.current[prevPage] += duration;
-      const viewTime = (duration / 1000).toFixed(2);
-      if (viewTime > 1) {
-			  getDocumentService().incrementPageViewTime(documentId, prevPage, viewTime);
-      }
-		
+			const viewTime = (duration / 1000).toFixed(2);
+			if (viewTime > 1) {
+				getDocumentService().incrementPageViewTime(
+					documentId,
+					prevPage,
+					viewTime
+				);
+			}
 		}
 
 		// Start tracking time for current page
@@ -116,7 +121,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			}
 		};
 	}, [pageNumber, file, numPages]);
-
 
 	// Keyboard navigation for page flipping
 	useEffect(() => {
@@ -226,6 +230,34 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			// console.log(clickedChunk.id);
 			// chunk clicked
 			const chunkService = getChunkService();
+			
+			// Optimistically update local state immediately for real-time feedback
+			setChunks((prevChunks) =>
+				prevChunks.map((chunk) =>
+					chunk.id === clickedChunk.id
+						? {
+								...chunk,
+								interactions: (chunk.interactions || 0) + 1,
+							}
+						: chunk
+				)
+			);
+
+			// Add new interaction to local state for immediate blob update
+			const newInteraction = {
+				id: `temp-${Date.now()}`,
+				chunk_id: clickedChunk.id,
+				x_coord: x,
+				y_coord: y,
+				page_number: currentPage,
+				created_at: new Date().toISOString(),
+			};
+			setInteractions((prevInteractions) => [
+				...prevInteractions,
+				newInteraction,
+			]);
+
+			// Update database
 			chunkService
 				.incrementChunkCount(clickedChunk.id, x, y, currentPage)
 				.then((data) => {
@@ -236,14 +268,43 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						"count: ",
 						data
 					);
+					// Optionally refresh interactions from server to get the real ID
+					// But the optimistic update already shows the change
+				})
+				.catch((error) => {
+					console.error("Error incrementing chunk count:", error);
+					// Revert optimistic update on error
+					setChunks((prevChunks) =>
+						prevChunks.map((chunk) =>
+							chunk.id === clickedChunk.id
+								? {
+										...chunk,
+										interactions: Math.max(
+											0,
+											(chunk.interactions || 1) - 1
+										),
+									}
+								: chunk
+						)
+					);
+					setInteractions((prevInteractions) =>
+						prevInteractions.filter(
+							(interaction) => interaction.id !== newInteraction.id
+						)
+					);
 				});
-      if (clickedChunk.id === top3Chunks[0]?.id || clickedChunk.id === top3Chunks[1]?.id || clickedChunk.id === top3Chunks[2]?.id) {
-        // Get the full chunk data and display popup
-        const fullChunk = chunks.find(c => c.id === clickedChunk.id);
-        if (fullChunk) {
-          setSelectedChunk(fullChunk);
-        }
-      }
+
+			if (
+				clickedChunk.id === top3Chunks[0]?.id ||
+				clickedChunk.id === top3Chunks[1]?.id ||
+				clickedChunk.id === top3Chunks[2]?.id
+			) {
+				// Get the full chunk data and display popup
+				const fullChunk = chunks.find((c) => c.id === clickedChunk.id);
+				if (fullChunk) {
+					setSelectedChunk(fullChunk);
+				}
+			}
 		}
 
 		// Log click location to console
@@ -688,7 +749,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			</div>
 
 			{/* Chunk Content Popup */}
-			{selectedChunk && (
+			{/* {selectedChunk && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 					onClick={() => setSelectedChunk(null)}
@@ -715,7 +776,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						</CardContent>
 					</Card>
 				</div>
-			)}
+			)} */}
 		</div>
 	);
 };
