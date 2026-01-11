@@ -46,7 +46,7 @@ export function DocEditor() {
         <AiSummary />
 
         {/* Struggle Map Area */}
-        <StruggleMap />
+        {/* <StruggleMap /> */}
 
         {/* Comment Section */}
         <CommentSection />

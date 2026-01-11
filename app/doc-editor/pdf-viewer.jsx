@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
 import { getInteractionService } from "@/app/supabase-service/interaction-service";
 import { useSearchParams } from "next/navigation";
@@ -28,11 +29,14 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
 	const [interactions, setInteractions] = useState([]); // Array of interactions from database
+	const [selectedChunk, setSelectedChunk] = useState(null); // Chunk selected for popup display
 	const containerRef = useRef(null);
 	const pageViewStartTime = useRef(null); // Track when current page view started
 	const previousPageNumber = useRef(null); // Track previous page number
   const pageViewTimes = useRef({}); // Store accumulated time spent on each page (in milliseconds)
   const [docService, setDocService] = useState(null);
+  const [chunkService, setChunkService] = useState(null);
+  const [top3Chunks, setTop3Chunks] = useState([]);
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -45,7 +49,18 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
   useEffect(() => {
     const docService = getDocumentService();
     setDocService(docService);
+    const chunkService = getChunkService();
+    setChunkService(chunkService);
   }, []);
+
+  useEffect(() => {
+    if (chunkService) {
+      chunkService.getTop3ChunksByPage(documentId, pageNumber).then((data) => {
+        setTop3Chunks(data);
+        console.log("top3Chunks: ", data);
+      });
+    }
+  }, [chunkService, documentId, pageNumber]);
 
 	// Track time spent on each page
 	useEffect(() => {
@@ -102,20 +117,6 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		};
 	}, [pageNumber, file, numPages]);
 
-	// Log summary when file changes or component unmounts
-	useEffect(() => {
-		return () => {
-			if (Object.keys(pageViewTimes.current).length > 0) {
-				console.log("=== Page View Time Summary ===");
-				Object.entries(pageViewTimes.current).forEach(([page, totalTime]) => {
-					console.log(
-						`Page ${page}: ${(totalTime / 1000).toFixed(2)} seconds`
-					);
-				});
-				console.log("==============================");
-			}
-		};
-	}, [file]);
 
 	// Keyboard navigation for page flipping
 	useEffect(() => {
@@ -236,6 +237,13 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						data
 					);
 				});
+      if (clickedChunk.id === top3Chunks[0]?.id || clickedChunk.id === top3Chunks[1]?.id || clickedChunk.id === top3Chunks[2]?.id) {
+        // Get the full chunk data and display popup
+        const fullChunk = chunks.find(c => c.id === clickedChunk.id);
+        if (fullChunk) {
+          setSelectedChunk(fullChunk);
+        }
+      }
 		}
 
 		// Log click location to console
@@ -678,6 +686,36 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 					</div>
 				)}
 			</div>
+
+			{/* Chunk Content Popup */}
+			{selectedChunk && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+					onClick={() => setSelectedChunk(null)}
+				>
+					<Card
+						className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle>Chunk Content</CardTitle>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => setSelectedChunk(null)}
+								className="h-6 w-6"
+							>
+								×
+							</Button>
+						</CardHeader>
+						<CardContent className="overflow-y-auto flex-1">
+							<p className="text-sm whitespace-pre-wrap">
+								{selectedChunk.content || "No content available"}
+							</p>
+						</CardContent>
+					</Card>
+				</div>
+			)}
 		</div>
 	);
 };

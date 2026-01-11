@@ -130,5 +130,17 @@ export const getChunkService = () => {
 			}
 			return { data, data2 };
 		},
+		getTop3ChunksByPage: async (documentId, pageNumber) => {
+			const { data, error } = await supabase
+				.from("chunks")
+				.select("*")
+				.eq("document_id", documentId)
+				.eq("page_number", pageNumber)
+				.order("interactions", { ascending: false })
+				.limit(3);
+				
+			if (error) throw error;
+			return data;
+		},
 	};
 };
