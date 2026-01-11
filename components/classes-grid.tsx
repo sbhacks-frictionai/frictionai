@@ -1,34 +1,33 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search } from "lucide-react";
-
-// Sample classes data
-const classes = [
-  "CS16",
-  "CS 130A",
-  "MATH8",
-  "CS 101",
-  "MATH 19A",
-  "CS 130B",
-  "MATH 20A",
-];
+import { getClassService } from "@/app/supabase-service/class-service";
 
 export function ClassesGrid() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [classNames, setClassNames] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      const classes = await getClassService().getClasses();
+      setClassNames(classes.map((cls) => cls["department"] + " " + cls["course_number"]));
+    };
+    fetchClasses();
+  }, []);
 
   const filteredClasses = useMemo(() => {
     if (!searchQuery.trim()) {
-      return classes;
+      return classNames;
     }
     const query = searchQuery.toLowerCase().trim();
-    return classes.filter((className) =>
-      className.toLowerCase().replace(/\s+/g, "").includes(query.replace(/\s+/g, ""))
+    return classNames.filter((name) =>
+      name.toLowerCase().replace(/\s+/g, "").includes(query.replace(/\s+/g, ""))
     );
-  }, [searchQuery]);
+  }, [searchQuery, classNames]);
 
   return (
     <div className="flex flex-col gap-8 w-full">
