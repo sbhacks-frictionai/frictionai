@@ -84,8 +84,8 @@ export function ClassDocs() {
     setUploading(true);
     
     documentService.createDocument(fileName.trim(),selectedFile, courseId, topic.trim()).then((docData)=> {
-      console.log(docData);
       setUploading(false);
+      window.location.reload();
     });
     
   };

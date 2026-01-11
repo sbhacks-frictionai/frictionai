@@ -13,6 +13,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
  * @param {string|null} [props.id] - Document ID to fetch chunks for
  */
 const PdfViewer = ({ file: fileProp = null } = {}) => {
+<<<<<<< HEAD
 	const searchParams = useSearchParams();
 	const documentId = searchParams.get("id");
 	const [file, setFile] = useState(fileProp || null);
@@ -30,6 +31,19 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const pageViewStartTime = useRef(null);
 	const pageViewTimes = useRef({}); // Store time spent on each page
 	const [currentPageViewTime, setCurrentPageViewTime] = useState(0); // Time on current page in seconds
+=======
+  const [file, setFile] = useState(fileProp || null);
+  const [numPages, setNumPages] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.0);
+  const [annotations, setAnnotations] = useState([]);
+  const [mode, setMode] = useState('view'); // 'view', 'text', 'highlight'
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState(null);
+  const [currentHighlight, setCurrentHighlight] = useState(null);
+  const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
+  const containerRef = useRef(null);
+>>>>>>> bugfix
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -39,6 +53,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
 
+<<<<<<< HEAD
 	// Track time spent on each page and update display
 	useEffect(() => {
 		if (!file || !numPages) return;
@@ -66,6 +81,12 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		setSelectedHighlight(null);
 
 		// console.log(`Started viewing page ${pageNumber}`);
+=======
+  // Close dialog bubble when page changes
+  useEffect(() => {
+    setSelectedHighlight(null);
+  }, [pageNumber]);
+>>>>>>> bugfix
 
 		// Update displayed time every second
 		const interval = setInterval(() => {
@@ -177,6 +198,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		const x = (e.clientX - rect.left) / scale;
 		const y = (e.clientY - rect.top) / scale;
 
+<<<<<<< HEAD
 		// Log click location to console
 		console.log("PDF Click Location:", {
 			page: pageIndex + 1,
@@ -671,6 +693,190 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			</div>
 		</div>
 	);
+=======
+            <div className="zoom-controls flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={zoomOut}
+                title="Zoom out"
+              >
+                -
+              </Button>
+              <span className="text-sm font-medium min-w-[50px] text-center">
+                {Math.round(scale * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={zoomIn}
+                title="Zoom in"
+              >
+                +
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-auto p-5 flex justify-center items-start relative bg-background" ref={containerRef}>
+        {!file && (
+          <div className="flex justify-center items-center h-full text-lg text-muted-foreground">
+            <p>Loading PDF...</p>
+          </div>
+        )}
+
+        {file && (
+          <div className="flex flex-col items-center gap-5">
+            <Document
+              file={file}
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={<div className="p-5 text-center text-base">Loading PDF...</div>}
+              error={<div className="p-5 text-center text-base text-destructive">Error loading PDF</div>}
+            >
+              <div
+                className="relative shadow-lg bg-background border border-border"
+                onClick={(e) => {
+                  // Close dialog bubble if clicking outside of it
+                  if (selectedHighlight && e.target === e.currentTarget) {
+                    setSelectedHighlight(null);
+                  }
+                  handlePageClick(e, pageNumber - 1);
+                }}
+                onMouseDown={(e) => handleMouseDown(e, pageNumber - 1)}
+                onMouseMove={(e) => handleMouseMove(e, pageNumber - 1)}
+                onMouseUp={(e) => handleMouseUp(e, pageNumber - 1)}
+              >
+                
+                <Page
+                  pageNumber={pageNumber}
+                  scale={scale}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                />
+                
+                {/* Overlay for annotations */}
+                <div
+                  className="absolute top-0 left-0 w-full h-full z-10"
+                  style={{
+                    pointerEvents: mode === 'view' ? 'auto' : 'auto',
+                    cursor: mode === 'text' ? 'crosshair' : mode === 'highlight' ? 'crosshair' : 'pointer',
+                  }}
+                >
+                  {getAnnotationsForPage(pageNumber).map((annotation) => {
+                    if (annotation.type === 'text') {
+                      return (
+                        <div
+                          key={annotation.id}
+                          className="absolute cursor-pointer z-[11]"
+                          style={{
+                            left: `${annotation.x * scale}px`,
+                            top: `${annotation.y * scale}px`,
+                            transform: `scale(${scale})`,
+                            transformOrigin: 'top left',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Delete this annotation?')) {
+                              deleteAnnotation(annotation.id);
+                            }
+                          }}
+                        >
+                          <div className="bg-yellow-200 dark:bg-yellow-600 p-1 px-2 rounded border border-yellow-400 dark:border-yellow-500 text-xs max-w-[200px] break-words shadow-md transition-transform hover:scale-105 z-[12]">
+                            {annotation.text}
+                          </div>
+                        </div>
+                      );
+                    } else if (annotation.type === 'highlight') {
+                      return (
+                        <div
+                          key={annotation.id}
+                          className="absolute bg-yellow-200/30 dark:bg-yellow-600/30 border-2 border-yellow-400 dark:border-yellow-500 cursor-pointer z-[11] transition-colors hover:bg-yellow-200/50 dark:hover:bg-yellow-600/50 hover:z-[12]"
+                          style={{
+                            left: `${annotation.x * scale}px`,
+                            top: `${annotation.y * scale}px`,
+                            width: `${annotation.width * scale}px`,
+                            height: `${annotation.height * scale}px`,
+                            transform: `scale(${scale})`,
+                            transformOrigin: 'top left',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (mode === 'view') {
+                              // Show dialog bubble next to the highlight
+                              setSelectedHighlight({
+                                id: annotation.id,
+                                x: annotation.x + annotation.width,
+                                y: annotation.y,
+                                width: annotation.width,
+                                height: annotation.height,
+                                page: annotation.page,
+                              });
+                            } else {
+                              // In other modes, show delete confirmation
+                              if (confirm('Delete this highlight?')) {
+                                deleteAnnotation(annotation.id);
+                              }
+                            }
+                          }}
+                        />
+                      );
+                    }
+                    return null;
+                  })}
+                  
+                  {/* Current highlight being drawn */}
+                  {currentHighlight && mode === 'highlight' && isDrawing && (
+                    <div
+                      className="absolute bg-yellow-200/40 dark:bg-yellow-600/40 border-2 border-dashed border-yellow-400 dark:border-yellow-500 pointer-events-none"
+                      style={{
+                        left: `${currentHighlight.x * scale}px`,
+                        top: `${currentHighlight.y * scale}px`,
+                        width: `${currentHighlight.width * scale}px`,
+                        height: `${currentHighlight.height * scale}px`,
+                        transform: `scale(${scale})`,
+                        transformOrigin: 'top left',
+                      }}
+                    />
+                  )}
+
+                  {/* Dialog bubble for selected highlight */}
+                  {selectedHighlight && selectedHighlight.page === pageNumber && (
+                    <div
+                      className="absolute z-[20] dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-[200px] max-w-[300px]"
+                      style={{
+                        left: `${selectedHighlight.x * scale + 10}px`,
+                        top: `${selectedHighlight.y * scale}px`,
+                        transform: `scale(${scale})`,
+                        transformOrigin: 'top left',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Highlight Options
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSelectedHighlight(null)}
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none ml-2"
+                          aria-label="Close"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Document>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+>>>>>>> bugfix
 };
 
 export default PdfViewer;
