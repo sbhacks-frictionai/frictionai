@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
+import { getInteractionService } from "@/app/supabase-service/interaction-service";
 import { useSearchParams } from "next/navigation";
 
 // Set up PDF.js worker - use unpkg CDN which has all versions
@@ -26,6 +27,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [currentHighlight, setCurrentHighlight] = useState(null);
 	const [selectedHighlight, setSelectedHighlight] = useState(null); // { id, x, y, width, height, page }
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
+	const [interactions, setInteractions] = useState([]); // Array of interactions from database
 	const containerRef = useRef(null);
 
 	const goToPrevPage = useCallback(() => {
@@ -101,6 +103,30 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		fetchChunks();
 	}, [documentId]);
 
+	// Fetch interactions when documentId or pageNumber changes
+	useEffect(() => {
+		const fetchInteractions = async () => {
+			if (!documentId) {
+				setInteractions([]);
+				return;
+			}
+
+			try {
+				const interactionService = getInteractionService();
+				const fetchedInteractions = await interactionService.getInteractionsByPage(
+					documentId,
+					pageNumber
+				);
+				setInteractions(fetchedInteractions || []);
+			} catch (error) {
+				console.error("Error fetching interactions:", error);
+				setInteractions([]);
+			}
+		};
+
+		fetchInteractions();
+	}, [documentId, pageNumber]);
+
 	const onDocumentLoadSuccess = ({ numPages }) => {
 		setNumPages(numPages);
 		setPageNumber(1);
@@ -120,7 +146,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
       // console.log(clickedChunk.id);
 			// chunk clicked
 			const chunkService = getChunkService();
-			chunkService.incrementChunkCount(clickedChunk.id).then((data)=> {
+			chunkService.incrementChunkCount(clickedChunk.id, x, y, currentPage).then((data)=> {
         console.log("chunk: ", clickedChunk.id, "\n", "count: ", data);
       });
 		}
@@ -235,6 +261,13 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			return chunks.filter((chunk) => chunk.page_number === pageNum);
 		},
 		[chunks]
+	);
+
+	const getInteractionsForPage = useCallback(
+		(pageNum) => {
+			return interactions.filter((interaction) => interaction.page_number === pageNum);
+		},
+		[interactions]
 	);
 
 	// Check if a point (x, y) is within a chunk's boundaries
@@ -389,6 +422,41 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
+												/>
+											);
+										}
+									)}
+								</div>
+
+								{/* Overlay for interactions (red dots) */}
+								<div className="absolute top-0 left-0 w-full h-full z-[9] pointer-events-none">
+									{getInteractionsForPage(pageNumber).map(
+										(interaction) => {
+											// Only render if coordinates exist
+											if (
+												interaction.x_coord == null ||
+												interaction.y_coord == null
+											) {
+												return null;
+											}
+
+											return (
+												<div
+													key={interaction.id}
+													className="absolute bg-red-500 rounded-full"
+													style={{
+														left: `${
+															interaction.x_coord * scale
+														}px`,
+														top: `${
+															interaction.y_coord * scale
+														}px`,
+														width: `${6 * scale}px`,
+														height: `${6 * scale}px`,
+														transform: "translate(-50%, -50%)",
+														boxShadow: "0 0 2px rgba(0,0,0,0.3)",
+													}}
+													title={`Click at ${interaction.x_coord.toFixed(1)}, ${interaction.y_coord.toFixed(1)}`}
 												/>
 											);
 										}

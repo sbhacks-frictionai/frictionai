@@ -91,17 +91,37 @@ export const getChunkService = () => {
 			return data;
 		},
 
-		incrementChunkCount: async (chunkId) => {
+		/**
+		 * Increment chunk interaction count and record interaction with click position
+		 * @param {string} chunkId - The chunk UUID
+		 * @param {number} x - X coordinate of the click
+		 * @param {number} y - Y coordinate of the click
+		 * @param {number} pageNumber - The page number where the click occurred
+		 * @returns {Promise<number|null>} The new interaction count, or null if error
+		 */
+		incrementChunkCount: async (chunkId, x, y, pageNumber) => {
+			// Get the current user ID (if authenticated)
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
+			const userId = user?.id || null;
+
 			const { data, error } = await supabase.rpc(
-				"increment_chunk",
-				{ chunkid: chunkId }
+				"increment_chunk_interaction",
+				{
+					p_chunk_id: chunkId,
+					p_user_id: userId,
+					p_x_coord: x,
+					p_y_coord: y,
+					p_page_number: pageNumber,
+				}
 			);
-			
+
 			if (error) {
-				console.error("Failed to increment:", error);
+				console.error("Failed to increment chunk interaction:", error);
 				return null;
 			}
 			return data;
-		}
+		},
 	};
 };
