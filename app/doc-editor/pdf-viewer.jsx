@@ -293,7 +293,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 			if (pageInteractions.length === 0) return [];
 
 			// Clustering threshold - interactions within this distance are grouped
-			const CLUSTER_THRESHOLD = 40; // pixels
+			const CLUSTER_THRESHOLD = 20; // pixels
 			const clusters = [];
 
 			// Improved clustering: assign each point to nearest cluster, then recalculate centers
@@ -355,19 +355,30 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 				const rawDensity = cluster.count / maxCount;
 				const density = Math.pow(rawDensity, 0.7); // Slight curve for better visual distribution
 
-				// Interpolate color from green (low) to red (high)
-				// Green: rgb(34, 197, 94) - Red: rgb(239, 68, 68)
-				const red = Math.round(34 + (239 - 34) * density);
-				const green = Math.round(197 - (197 - 68) * density);
-				const blue = Math.round(94 - (94 - 68) * density);
+				// Interpolate color from green (low) -> yellow (medium) -> red (high)
+				// Green: rgb(34, 197, 94) - Yellow: rgb(234, 179, 8) - Red: rgb(239, 68, 68)
+				let red, green, blue;
+				if (density < 0.5) {
+					// Interpolate between green and yellow
+					const t = density * 2; // Scale to 0-1 for this segment
+					red = Math.round(34 + (234 - 34) * t);
+					green = Math.round(197 - (197 - 179) * t);
+					blue = Math.round(94 - (94 - 8) * t);
+				} else {
+					// Interpolate between yellow and red
+					const t = (density - 0.5) * 2; // Scale to 0-1 for this segment
+					red = Math.round(234 + (239 - 234) * t);
+					green = Math.round(179 - (179 - 68) * t);
+					blue = Math.round(8 - (8 - 68) * t);
+				}
 
 				// Blob size scales with count (min 25px, max 80px)
 				const minSize = 25;
-				const maxSize = 80;
+				const maxSize = 60;
 				const blobSize = minSize + (maxSize - minSize) * density;
 
 				// Opacity based on density (more opaque = higher density)
-				const opacity = 0.4 + density * 0.4; // 0.4 to 0.8
+				const opacity = 0.3; // 0.4 to 0.8
 
 				return {
 					...cluster,
@@ -549,7 +560,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 											return (
 												<div
 													key={`blob-${index}-${blob.centerX}-${blob.centerY}`}
-													className="absolute rounded-full blur-sm"
+													className="absolute rounded-full blur-[2px]"
 													style={{
 														left: `${
 															blob.centerX * scale

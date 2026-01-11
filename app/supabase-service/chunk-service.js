@@ -106,7 +106,7 @@ export const getChunkService = () => {
 			} = await supabase.auth.getUser();
 			const userId = user?.id || null;
 
-			const { data, error } = await supabase.rpc(
+			let { data, error } = await supabase.rpc(
 				"increment_chunk_interaction",
 				{
 					p_chunk_id: chunkId,
@@ -116,12 +116,19 @@ export const getChunkService = () => {
 					p_page_number: pageNumber,
 				}
 			);
+			let { data2, error2 } = await supabase.rpc("increment_chunk", {
+				chunkid: chunkId,
+			});
 
-			if (error) {
-				console.error("Failed to increment chunk interaction:", error);
+			if (error || error2) {
+				console.error(
+					"Failed to increment chunk interaction:",
+					error,
+					error2
+				);
 				return null;
 			}
-			return data;
+			return { data, data2 };
 		},
 	};
 };
