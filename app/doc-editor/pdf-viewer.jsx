@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getChunkService } from "@/app/supabase-service/chunk-service";
 import { getInteractionService } from "@/app/supabase-service/interaction-service";
+import { getExplanationService } from "@/app/supabase-service/explanation-service";
 import { useSearchParams } from "next/navigation";
 import { getDocumentService } from "@/app/supabase-service/document-service";
 // Set up PDF.js worker - use unpkg CDN which has all versions
@@ -30,6 +32,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [chunks, setChunks] = useState([]); // Array of chunks from database
 	const [interactions, setInteractions] = useState([]); // Array of interactions from database
 	const [selectedChunk, setSelectedChunk] = useState(null); // Chunk selected for popup display
+	const [aiModal, setAiModal] = useState({ open: false, loading: false, data: null, error: null });
 	const containerRef = useRef(null);
 	const pageViewStartTime = useRef(null); // Track when current page view started
 	const previousPageNumber = useRef(null); // Track previous page number
@@ -37,6 +40,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const [docService, setDocService] = useState(null);
 	const [chunkService, setChunkService] = useState(null);
 	const [top3Chunks, setTop3Chunks] = useState([]);
+	const [aiExplanationEnabled, setAiExplanationEnabled] = useState(true);
 
 	const goToPrevPage = useCallback(() => {
 		setPageNumber((prev) => Math.max(1, prev - 1));
@@ -45,6 +49,26 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 	const goToNextPage = useCallback(() => {
 		setPageNumber((prev) => Math.min(numPages || 1, prev + 1));
 	}, [numPages]);
+
+	const openAIExplanation = useCallback(async (chunkId) => {
+		setAiModal({ open: true, loading: true, data: null, error: null });
+		
+		try {
+			const explanationService = getExplanationService();
+			
+			// Fetch AI explanation
+			const data = await explanationService.explainChunk(
+				chunkId,
+				"detailed",
+				2
+			);
+			
+			setAiModal({ open: true, loading: false, data, error: null });
+		} catch (error) {
+			console.error("Error fetching AI explanation:", error);
+			setAiModal({ open: true, loading: false, data: null, error: error.message });
+		}
+	}, []);
 
 	useEffect(() => {
 		const docService = getDocumentService();
@@ -217,7 +241,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		previousPageNumber.current = 1;
 	};
 
-	const handlePageClick = (e, pageIndex) => {
+	const handlePageClick = async (e, pageIndex) => {
 		const rect = e.currentTarget.getBoundingClientRect();
 		const x = (e.clientX - rect.left) / scale;
 		const y = (e.clientY - rect.top) / scale;
@@ -227,8 +251,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 		const clickedChunk = getChunkAtPoint(x, y, currentPage);
 
 		if (clickedChunk) {
-			// console.log(clickedChunk.id);
-			// chunk clicked
+			// chunk clicked - always record click data
 			const chunkService = getChunkService();
 
 			// Optimistically update local state immediately for real-time feedback
@@ -294,6 +317,11 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 						)
 					);
 				});
+
+			// Open AI explanation modal if enabled
+			if (aiExplanationEnabled) {
+				await openAIExplanation(clickedChunk.id);
+			}
 
 			if (
 				clickedChunk.id === top3Chunks[0]?.id ||
@@ -611,6 +639,20 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 							</Button>
 						</div>
 
+						<div className="ai-toggle-controls flex items-center gap-2 ml-4">
+							<label 
+								htmlFor="ai-explanation-toggle"
+								className="flex items-center gap-2 text-sm font-medium cursor-pointer"
+							>
+								<Checkbox
+									id="ai-explanation-toggle"
+									checked={aiExplanationEnabled}
+									onCheckedChange={(checked) => setAiExplanationEnabled(checked === true)}
+								/>
+								<span>AI Explanations</span>
+							</label>
+						</div>
+
 						<div className="zoom-controls flex items-center gap-2 ml-auto">
 							<Button
 								variant="outline"
@@ -695,7 +737,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 
 											return (
 												<div
-													key={chunk.id}
+												key={chunk.id}
 													// ADD BORDERS HERE FOR TESTING
 													className="absolute bg-transparent"
 													style={{
@@ -712,6 +754,7 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 															chunkHeight * scale
 														}px`,
 													}}
+													title="Click for AI explanation"
 												/>
 											);
 										}
@@ -798,6 +841,32 @@ const PdfViewer = ({ file: fileProp = null } = {}) => {
 					</Card>
 				</div>
 			)} */}
+
+			{/* AI Explanation Modal */}
+			{aiModal.open && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setAiModal({ ...aiModal, open: false })}>
+					<div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+						<div className="sticky top-0 bg-white dark:bg-gray-800 border-b px-6 py-4 flex justify-between items-center">
+							<h2 className="text-lg font-semibold">AI Explanation</h2>
+							<button onClick={() => setAiModal({ ...aiModal, open: false })} className="text-gray-500 hover:text-gray-700">✕</button>
+						</div>
+						<div className="px-6 py-4">
+							{aiModal.loading && <div className="text-center py-8">Loading explanation...</div>}
+							{aiModal.error && <div className="text-red-600">Error: {aiModal.error}</div>}
+							{aiModal.data && (
+								<div className="space-y-4">
+									<div className="text-sm text-gray-600">
+										<span className="font-medium">{aiModal.data.course_code}</span> • {aiModal.data.document_name}
+									</div>
+									<div className="prose max-w-none">
+										<p className="whitespace-pre-wrap">{aiModal.data.explanation}</p>
+									</div>
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };
