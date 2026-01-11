@@ -419,3 +419,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/chunk-explain/deno.json"
 entrypoint = "./functions/chunk-explain/index.ts"
+
+[functions.generate-study-guide]
+enabled = true
+verify_jwt = true
+import_map = "./functions/generate-study-guide/deno.json"
+entrypoint = "./functions/generate-study-guide/index.ts"
