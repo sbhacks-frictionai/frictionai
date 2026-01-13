@@ -1,4 +1,4 @@
-![document heatmap](screenshot/document heatmap.png)
+![document heatmap](<screenshot/document heatmap.png>)
 
 # FrictionAI
 
@@ -22,6 +22,6 @@ Click any confusing text or diagram in your course materials to get an instant A
 
 ![homepage](screenshot/homepage.png)
 
-![homepage](screenshot/ai concept explain.png)
+![homepage](<screenshot/ai concept explain.png>)
 
-![homepage](screenshot/ai study guide.png)
+![homepage](<screenshot/ai study guide.png>)
